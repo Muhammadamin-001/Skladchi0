@@ -59,7 +59,7 @@ async def branch_select(callback: CallbackQuery, state: FSMContext):
     await state.update_data(current_branch=branch_name)
     
     await callback.message.edit_text(
-        MESSAGES["branch_action"].format(branch_name),
+        f"🏢 Filial: <b>{branch_name}</b>\n\nFaoliyatni tanlang:",
         reply_markup=branch_action_menu(),
         parse_mode="HTML"
     )
@@ -138,7 +138,7 @@ async def product_common(callback: CallbackQuery, state: FSMContext):
     await state.clear()
     await state.update_data(product_branch=None)
     await callback.message.edit_text(
-        MESSAGES["product_list"].format("Umumiy"),
+        "📦 Umumiy Mahsulotlar:\n\nMahsulot tanlang yoki yangi qo'shish:",
         reply_markup=products_menu(None),
         parse_mode="HTML"
     )
@@ -147,7 +147,7 @@ async def product_common(callback: CallbackQuery, state: FSMContext):
 async def product_branch(callback: CallbackQuery, state: FSMContext):
     """Filialga xos mahsulotlar"""
     await callback.message.edit_text(
-        MESSAGES["product_select_branch"],
+        "🏢 Filial tanlang:",
         reply_markup=branches_for_products_menu()
     )
 
@@ -158,7 +158,7 @@ async def product_branch_select(callback: CallbackQuery, state: FSMContext):
     await state.update_data(product_branch=branch_name)
     
     await callback.message.edit_text(
-        MESSAGES["product_list"].format(branch_name),
+        f"📦 {branch_name} Uchun Mahsulotlar:\n\nMahsulot tanlang yoki yangi qo'shish:",
         reply_markup=products_menu(branch_name),
         parse_mode="HTML"
     )
@@ -180,7 +180,7 @@ async def product_add(callback: CallbackQuery, state: FSMContext):
 
 @router.message(AdminProductStates.adding_product_name)
 async def product_add_name(message: Message, state: FSMContext):
-    """Mahsulot nomi"""
+    """Mahsulot nomini kiritish"""
     await state.update_data(product_name=message.text.strip())
     await state.set_state(AdminProductStates.adding_product_image)
     
@@ -231,7 +231,7 @@ async def product_add_image(message: Message, state: FSMContext):
         )
     else:
         await message.answer(
-            MESSAGES["error_not_image"],
+            "❌ Iltimos, rasm yuboring",
             reply_markup=back_button("product_back")
         )
 
@@ -244,7 +244,7 @@ async def product_select(callback: CallbackQuery, state: FSMContext):
     
     await state.update_data(current_product=product_name)
     
-    text = MESSAGES["product_action"].format(product_name)
+    text = f"📦 Mahsulot: <b>{product_name}</b>\n\nFaoliyatni tanlang:"
     
     if product.get("image_id"):
         await callback.message.delete()
@@ -306,7 +306,7 @@ async def product_edit_image_question(callback: CallbackQuery, state: FSMContext
         branch = data.get("product_branch")
         
         await callback.message.edit_text(
-            MESSAGES["product_renamed"].format(new_name),
+            MESSAGES["product_added"].format(new_name),
             reply_markup=products_menu(branch)
         )
 
@@ -326,11 +326,13 @@ async def product_edit_image(message: Message, state: FSMContext):
         branch = data.get("product_branch")
         
         await message.answer(
-            MESSAGES["product_renamed"].format(new_name),
+            MESSAGES["product_added"].format(new_name),
             reply_markup=products_menu(branch)
         )
     else:
-        await message.answer(MESSAGES["error_not_image"])
+        await message.answer(
+            "❌ Iltimos, rasm yuboring"
+        )
 
 @router.callback_query(F.data == "product_delete")
 async def product_delete(callback: CallbackQuery, state: FSMContext):
@@ -357,8 +359,10 @@ async def product_back(callback: CallbackQuery, state: FSMContext):
     await state.clear()
     await state.update_data(product_branch=branch)
     
+    branch_text = branch or "Umumiy"
+    
     await callback.message.edit_text(
-        MESSAGES["product_list"].format(branch or "Umumiy"),
+        f"📦 {branch_text} Mahsulotlar:\n\nMahsulot tanlang yoki yangi qo'shish:",
         reply_markup=products_menu(branch),
         parse_mode="HTML"
     )
@@ -397,14 +401,14 @@ async def admin_list(callback: CallbackQuery, state: FSMContext):
     
     keyboard.append([
         InlineKeyboardButton(
-            text=MESSAGES["button_common"],
+            text="🌍 Umumiy",
             callback_data="admin_list_branch:common"
         )
     ])
     
     keyboard.append([
         InlineKeyboardButton(
-            text=MESSAGES["button_back"],
+            text="⬅️ Ortga",
             callback_data="admin_back"
         )
     ])
@@ -447,16 +451,16 @@ async def show_admin_inventory_list(message, branch, page, callback):
     for idx, product in enumerate(page_products, start_idx + 1):
         inventory = db.get_inventory(product["name"], branch)
         quantity = inventory.get("quantity", 0)
-        text += MESSAGES["list_item"].format(idx, product['name'], quantity) + "\n"
+        text += f"{idx}. {product['name']}: <b>{quantity}</b> dona\n"
     
-    text += MESSAGES["list_page_info"].format(page + 1, total_pages)
+    text += f"\n[Sahifa {page + 1}/{total_pages}]"
     
     keyboard = []
     
     if page > 0:
         keyboard.append([
             InlineKeyboardButton(
-                text=MESSAGES["button_prev"],
+                text="⬅️ Oldingi",
                 callback_data=f"admin_list_page:{page-1}:{branch or 'common'}"
             )
         ])
@@ -464,21 +468,22 @@ async def show_admin_inventory_list(message, branch, page, callback):
     if page < total_pages - 1:
         keyboard.append([
             InlineKeyboardButton(
-                text=MESSAGES["button_next"],
+                text="Keyingi ➡️",
                 callback_data=f"admin_list_page:{page+1}:{branch or 'common'}"
             )
         ])
     
     keyboard.append([
         InlineKeyboardButton(
-            text=MESSAGES["button_back"],
+            text="⬅️ Ortga",
             callback_data="admin_list"
         )
     ])
     
     await callback.message.edit_text(
         text,
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=keyboard)
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=keyboard),
+        parse_mode="HTML"
     )
 
 @router.callback_query(F.data.startswith("admin_list_page:"))

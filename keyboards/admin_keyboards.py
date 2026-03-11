@@ -22,12 +22,11 @@ def admin_main_menu():
     ])
 
 def branches_menu():
-    """Filiallar ro'yxati va boshqarish"""
+    """Filiallar ro'yxati"""
     db = get_db()
     branches = db.get_all_branches()
     keyboard = []
     
-    # Barcha filiallarni tugmalar qilib qo'shish
     for branch in branches:
         keyboard.append([
             InlineKeyboardButton(
@@ -36,7 +35,6 @@ def branches_menu():
             )
         ])
     
-    # Qo'shish tugmasi
     keyboard.append([
         InlineKeyboardButton(
             text=MESSAGES["button_add"],
@@ -44,7 +42,6 @@ def branches_menu():
         )
     ])
     
-    # Yopish tugmasi
     keyboard.append([
         InlineKeyboardButton(
             text="❌ Yopish",
@@ -55,7 +52,7 @@ def branches_menu():
     return InlineKeyboardMarkup(inline_keyboard=keyboard)
 
 def branch_action_menu():
-    """Filial bilan faoliyatlar"""
+    """Filial faoliyatlari"""
     return InlineKeyboardMarkup(inline_keyboard=[
         [
             InlineKeyboardButton(
@@ -87,15 +84,15 @@ def back_button(callback_data="back"):
     ])
 
 def product_type_menu():
-    """Mahsulot turi tanlash"""
+    """Mahsulot turi"""
     return InlineKeyboardMarkup(inline_keyboard=[
         [
             InlineKeyboardButton(
-                text=MESSAGES["button_general"],
+                text="📋 Umumiy",
                 callback_data="product_common"
             ),
             InlineKeyboardButton(
-                text=MESSAGES["button_for_branch"],
+                text="🏢 Filialga Xos",
                 callback_data="product_branch"
             )
         ],
@@ -108,7 +105,7 @@ def product_type_menu():
     ])
 
 def branches_for_products_menu():
-    """Mahsulot uchun filial tanlash"""
+    """Mahsulot uchun filiallar"""
     db = get_db()
     branches = db.get_all_branches()
     keyboard = []
@@ -131,12 +128,11 @@ def branches_for_products_menu():
     return InlineKeyboardMarkup(inline_keyboard=keyboard)
 
 def products_menu(branch=None):
-    """Mahsulot ro'yxati"""
+    """Mahsulotlar ro'yxati"""
     db = get_db()
     products = db.get_products_by_branch(branch)
     keyboard = []
     
-    # 2 ta mahsulot bir qatorda
     for i in range(0, len(products), 2):
         row = []
         for j in range(2):
@@ -150,7 +146,6 @@ def products_menu(branch=None):
                 )
         keyboard.append(row)
     
-    # Qo'shish tugmasi
     branch_key = branch if branch else "common"
     keyboard.append([
         InlineKeyboardButton(
@@ -159,7 +154,6 @@ def products_menu(branch=None):
         )
     ])
     
-    # Orqaga tugmasi
     keyboard.append([
         InlineKeyboardButton(
             text=MESSAGES["button_back"],
@@ -170,7 +164,7 @@ def products_menu(branch=None):
     return InlineKeyboardMarkup(inline_keyboard=keyboard)
 
 def product_action_menu():
-    """Mahsulot bilan faoliyatlar"""
+    """Mahsulot faoliyatlari"""
     return InlineKeyboardMarkup(inline_keyboard=[
         [
             InlineKeyboardButton(

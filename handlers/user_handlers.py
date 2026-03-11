@@ -35,7 +35,7 @@ async def user_input_branch(callback: CallbackQuery, state: FSMContext):
     branch_name = branch or "Umumiy bo'lim"
     
     await callback.message.edit_text(
-        f"📦 {branch_name}\n\n{MESSAGES['user_select_product']}",
+        f"📦 {branch_name}\n\n📦 Mahsulotlarni tanlang:",
         reply_markup=products_menu_user(branch, "input")
     )
 
@@ -74,7 +74,7 @@ async def user_input_quantity(message: Message, state: FSMContext):
     try:
         quantity = int(message.text)
         if quantity <= 0:
-            await message.answer(MESSAGES["error_invalid_number"])
+            await message.answer(MESSAGES["error_invalid_quantity"])
             return
         
         db = get_db()
@@ -108,7 +108,7 @@ async def user_input_back(callback: CallbackQuery, state: FSMContext):
     branch_name = branch or "Umumiy bo'lim"
     
     await callback.message.edit_text(
-        f"📦 {branch_name}\n\n{MESSAGES['user_select_product']}",
+        f"📦 {branch_name}\n\n📦 Mahsulotlarni tanlang:",
         reply_markup=products_menu_user(branch, "input")
     )
 
@@ -137,7 +137,7 @@ async def user_remove_branch(callback: CallbackQuery, state: FSMContext):
     branch_name = branch or "Umumiy bo'lim"
     
     await callback.message.edit_text(
-        f"📦 {branch_name}\n\n{MESSAGES['user_select_product']}",
+        f"📦 {branch_name}\n\n📦 Mahsulotlarni tanlang:",
         reply_markup=products_menu_user(branch, "remove")
     )
 
@@ -157,7 +157,7 @@ async def user_remove_product(callback: CallbackQuery, state: FSMContext):
     
     text = f"📦 <b>{product_name}</b>\n" \
            f"📊 Mavjud: <b>{current_qty}</b> dona\n\n" \
-           f"{MESSAGES['user_enter_remove_qty']}"
+           f"{MESSAGES['user_enter_quantity']}"
     
     if product.get("image_id"):
         await callback.message.delete()
@@ -180,7 +180,7 @@ async def user_remove_quantity(message: Message, state: FSMContext):
     try:
         quantity = int(message.text)
         if quantity <= 0:
-            await message.answer(MESSAGES["error_invalid_number"])
+            await message.answer(MESSAGES["error_invalid_quantity"])
             return
         
         db = get_db()
@@ -214,7 +214,7 @@ async def user_remove_back(callback: CallbackQuery, state: FSMContext):
     branch_name = branch or "Umumiy bo'lim"
     
     await callback.message.edit_text(
-        f"📦 {branch_name}\n\n{MESSAGES['user_select_product']}",
+        f"📦 {branch_name}\n\n📦 Mahsulotlarni tanlang:",
         reply_markup=products_menu_user(branch, "remove")
     )
 
@@ -227,7 +227,7 @@ async def user_list(callback: CallbackQuery, state: FSMContext):
     await state.set_state(UserListStates.choosing_branch)
     
     await callback.message.edit_text(
-        MESSAGES["list_select_branch"],
+        "📋 Ro'yxat\n\nFilial tanlang:",
         reply_markup=list_branches_menu()
     )
 
@@ -277,11 +277,11 @@ async def show_inventory_list(callback, branch, page):
         quantity = inventory.get("quantity", 0)
         
         if product.get("image_id"):
-            text += MESSAGES["list_item"].format(idx, product['name'], quantity) + " 📷\n"
+            text += f"{idx}. {product['name']}: <b>{quantity}</b> dona 📷\n"
         else:
-            text += MESSAGES["list_item"].format(idx, product['name'], quantity) + "\n"
+            text += f"{idx}. {product['name']}: <b>{quantity}</b> dona\n"
     
-    text += MESSAGES["list_page_info"].format(page + 1, total_pages)
+    text += f"\n[Sahifa {page + 1}/{total_pages}]"
     
     await callback.message.edit_text(
         text,

@@ -26,7 +26,7 @@ def user_main_menu():
     ])
 
 def user_request_menu():
-    """Foydalanuvchi so'rov menyu"""
+    """So'rov menyu"""
     return InlineKeyboardMarkup(inline_keyboard=[
         [
             InlineKeyboardButton(
@@ -37,7 +37,7 @@ def user_request_menu():
     ])
 
 def branches_menu_user(action="input"):
-    """Foydalanuvchi uchun filial menyu"""
+    """Foydalanuvchi uchun filiallar"""
     db = get_db()
     branches = db.get_all_branches()
     keyboard = []
@@ -50,15 +50,13 @@ def branches_menu_user(action="input"):
             )
         ])
     
-    # Umumiy mahsulotlar
     keyboard.append([
         InlineKeyboardButton(
-            text=MESSAGES["button_common"],
+            text="🌍 Umumiy",
             callback_data=f"user_{action}_branch:common"
         )
     ])
     
-    # Orqaga
     keyboard.append([
         InlineKeyboardButton(
             text=MESSAGES["button_back"],
@@ -69,12 +67,11 @@ def branches_menu_user(action="input"):
     return InlineKeyboardMarkup(inline_keyboard=keyboard)
 
 def products_menu_user(branch=None, action="input"):
-    """Foydalanuvchi uchun mahsulot menyu"""
+    """Foydalanuvchi uchun mahsulotlar"""
     db = get_db()
     products = db.get_products_by_branch(branch)
     keyboard = []
     
-    # 2 ta mahsulot bir qatorda
     for i in range(0, len(products), 2):
         row = []
         for j in range(2):
@@ -88,7 +85,6 @@ def products_menu_user(branch=None, action="input"):
                 )
         keyboard.append(row)
     
-    # Orqaga
     keyboard.append([
         InlineKeyboardButton(
             text=MESSAGES["button_back"],
@@ -99,7 +95,7 @@ def products_menu_user(branch=None, action="input"):
     return InlineKeyboardMarkup(inline_keyboard=keyboard)
 
 def back_button_user(callback_data="user_main"):
-    """Foydalanuvchi uchun orqaga tugmasi"""
+    """Foydalanuvchi orqaga tugmasi"""
     return InlineKeyboardMarkup(inline_keyboard=[
         [
             InlineKeyboardButton(
@@ -110,7 +106,7 @@ def back_button_user(callback_data="user_main"):
     ])
 
 def list_branches_menu():
-    """Ro'yxat uchun filial menyu"""
+    """Ro'yxat uchun filiallar"""
     db = get_db()
     branches = db.get_all_branches()
     keyboard = []
@@ -123,15 +119,13 @@ def list_branches_menu():
             )
         ])
     
-    # Umumiy mahsulotlar
     keyboard.append([
         InlineKeyboardButton(
-            text=MESSAGES["button_common"],
+            text="🌍 Umumiy",
             callback_data="list_branch:common"
         )
     ])
     
-    # Orqaga
     keyboard.append([
         InlineKeyboardButton(
             text=MESSAGES["button_back"],
@@ -142,13 +136,13 @@ def list_branches_menu():
     return InlineKeyboardMarkup(inline_keyboard=keyboard)
 
 def pagination_menu(page, total_pages, branch, callback_prefix="list_page"):
-    """Sahifalar orasida harakat"""
+    """Sahifalanish"""
     keyboard = []
     
     if page > 0:
         keyboard.append([
             InlineKeyboardButton(
-                text=MESSAGES["button_prev"],
+                text="⬅️ Oldingi",
                 callback_data=f"{callback_prefix}:{page-1}:{branch}"
             )
         ])
@@ -156,14 +150,14 @@ def pagination_menu(page, total_pages, branch, callback_prefix="list_page"):
     if page < total_pages - 1:
         keyboard.append([
             InlineKeyboardButton(
-                text=MESSAGES["button_next"],
+                text="Keyingi ➡️",
                 callback_data=f"{callback_prefix}:{page+1}:{branch}"
             )
         ])
     
     keyboard.append([
         InlineKeyboardButton(
-            text=MESSAGES["button_home"],
+            text="🏠 Bosh Sahifa",
             callback_data="user_main"
         )
     ])
