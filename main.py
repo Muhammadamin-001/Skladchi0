@@ -330,9 +330,12 @@ def handle_user_main(call):
 @app.route(f'/{BOT_TOKEN}', methods=['POST'])
 def webhook():
     """Webhook endpoint"""
-    json_str = request.get_data().decode('utf-8')
-    update = telebot.types.Update.de_json(json_str)
-    bot.process_new_updates([update])
+    try:
+        json_str = request.get_data().decode('utf-8')
+        update = telebot.types.Update.de_json(json_str)
+        bot.process_new_updates([update])
+    except Exception as e:
+        logger.error(f"❌ Webhook error: {e}")
     return "OK", 200
 
 @app.route('/')
@@ -340,9 +343,25 @@ def index():
     """Health check"""
     return "Bot is running", 200
 
+# ==================== WEBHOOK SETUP ====================
+
+def set_webhook():
+    """Telegram webhook'ni o'rnatish"""
+    webhook_url = "https://skladchi0-bot.onrender.com/" + BOT_TOKEN
+    try:
+        bot.remove_webhook()
+        bot.set_webhook(url=webhook_url, drop_pending_updates=True)
+        logger.info(f"✅ Webhook o'rnatildi: {webhook_url}")
+    except Exception as e:
+        logger.error(f"❌ Webhook xatosi: {e}")
+
 # ==================== MAIN ====================
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
+    
+    # ⭐ WEBHOOK O'RNATISH
+    set_webhook()
+    
     logger.info("🤖 Bot ishga tushdi!")
     app.run(host="0.0.0.0", port=port, debug=False)
