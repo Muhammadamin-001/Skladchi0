@@ -2,7 +2,7 @@ services:
   - type: web
     name: inventory-bot
     runtime: python
-    pythonVersion: "3.10"
+    pythonVersion: "3.11"
     
     buildCommand: |
       pip install --upgrade pip setuptools wheel
