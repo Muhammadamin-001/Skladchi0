@@ -4,7 +4,22 @@ import os
 from flask import Flask, request
 from config.settings import BOT_TOKEN, ADMIN_ID, MESSAGES
 from database.mongodb import init_db, get_db
-from keyboards.telebot_keyboards import *
+from keyboards.telebot_keyboards import (
+    admin_main_menu,
+    branches_menu,
+    #branch_action_menu,
+    back_button,
+    product_type_menu,
+    branches_for_products_menu,
+    products_menu,
+    #product_action_menu,
+    #yes_no_menu,
+    user_main_menu,
+    user_request_menu,
+    branches_menu_user,
+    products_menu_user,
+    list_branches_menu
+    )
 
 logging.basicConfig(
     level=logging.INFO,
