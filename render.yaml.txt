@@ -1,0 +1,22 @@
+services:
+  - type: web
+    name: inventory-bot
+    runtime: python
+    pythonVersion: "3.10"
+    
+    buildCommand: |
+      pip install --upgrade pip setuptools
+      pip install --no-build-isolation --no-cache-dir -r requirements.txt
+    
+    startCommand: python main.py
+    
+    envVars:
+      - key: BOT_TOKEN
+        sync: false
+      - key: ADMIN_ID
+        sync: false
+      - key: MONGO_URI
+        sync: false
+    
+    preemptible: false
+    maxInstances: 1
