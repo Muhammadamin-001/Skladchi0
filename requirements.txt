@@ -1,4 +1,5 @@
 python-telegram-bot==20.4
+aiogram==3.0.0
 pymongo==4.5.0
 python-dotenv==1.0.0
 aiohttp==3.9.1
