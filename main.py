@@ -7,19 +7,16 @@ from database.mongodb import init_db, get_db
 from keyboards.telebot_keyboards import (
     admin_main_menu,
     branches_menu,
-    #branch_action_menu,
     back_button,
     product_type_menu,
     branches_for_products_menu,
     products_menu,
-    #product_action_menu,
-    #yes_no_menu,
     user_main_menu,
     user_request_menu,
     branches_menu_user,
     products_menu_user,
     list_branches_menu
-    )
+)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -38,7 +35,6 @@ except Exception as e:
     logger.error(f"❌ MongoDB xatosi: {e}")
 
 # ==================== USER STATE STORAGE ====================
-# Webhook'da foydalanish uchun
 user_states = {}
 
 # ==================== /START ====================
@@ -121,6 +117,35 @@ def handle_branch_select(call):
         parse_mode="HTML"
     )
 
+@bot.callback_query_handler(func=lambda call: call.data.startswith("branch_edit:"))
+def handle_branch_edit(call):
+    """Filial tahrirlash"""
+    branch_name = call.data.split(":")[1]
+    user_id = call.from_user.id
+    user_states[user_id] = {"action": "editing_branch", "old_name": branch_name}
+    
+    bot.send_message(
+        call.message.chat.id,
+        "✍️ Yangi filial nomini kiriting:",
+        reply_markup=back_button("admin_branch")
+    )
+
+@bot.message_handler(func=lambda message: user_states.get(message.from_user.id, {}).get("action") == "editing_branch")
+def process_branch_edit(message):
+    """Filial nomini o'zgartirish"""
+    user_id = message.from_user.id
+    data = user_states.get(user_id, {})
+    old_name = data.get("old_name")
+    new_name = message.text.strip()
+    
+    db = get_db()
+    if db.update_branch(old_name, new_name):
+        bot.send_message(message.chat.id, MESSAGES["branch_renamed"].format(new_name), reply_markup=branches_menu())
+    else:
+        bot.send_message(message.chat.id, "❌ Xato yuz berdi", reply_markup=back_button("admin_branch"))
+    
+    user_states.pop(user_id, None)
+
 @bot.callback_query_handler(func=lambda call: call.data.startswith("branch_delete:"))
 def handle_branch_delete(call):
     """Filial o'chirish"""
@@ -154,6 +179,9 @@ def handle_admin_product(call):
 @bot.callback_query_handler(func=lambda call: call.data == "product_common")
 def handle_product_common(call):
     """Umumiy mahsulotlar"""
+    user_id = call.from_user.id
+    user_states[user_id] = {"action": "viewing_products", "branch": None}
+    
     bot.edit_message_text(
         "📦 Umumiy Mahsulotlar:\n\nMahsulot tanlang yoki yangi qo'shish:",
         call.message.chat.id,
@@ -176,6 +204,8 @@ def handle_product_branch(call):
 def handle_product_branch_select(call):
     """Filial uchun mahsulotlar"""
     branch_name = call.data.split(":")[1]
+    user_id = call.from_user.id
+    user_states[user_id] = {"action": "viewing_products", "branch": branch_name}
     
     bot.edit_message_text(
         f"📦 {branch_name} Uchun Mahsulotlar:\n\nMahsulot tanlang yoki yangi qo'shish:",
@@ -183,6 +213,86 @@ def handle_product_branch_select(call):
         call.message.message_id,
         reply_markup=products_menu(branch_name),
         parse_mode="HTML"
+    )
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith("product_select:"))
+def handle_product_select(call):
+    """Mahsulotni tanlash - tahrirlash/o'chirish"""
+    product_name = call.data.split(":")[1]
+    user_id = call.from_user.id
+    data = user_states.get(user_id, {})
+    branch = data.get("branch")
+    
+    db = get_db()
+    product = db.get_product_by_name(product_name)
+    
+    markup = telebot.types.InlineKeyboardMarkup()
+    markup.add(
+        telebot.types.InlineKeyboardButton(MESSAGES["button_edit"], callback_data=f"product_edit:{product_name}"),
+        telebot.types.InlineKeyboardButton(MESSAGES["button_delete"], callback_data=f"product_delete:{product_name}")
+    )
+    markup.add(telebot.types.InlineKeyboardButton(MESSAGES["button_back"], callback_data="product_branch_back"))
+    
+    text = f"📦 <b>{product_name}</b>\n\nFaoliyatni tanlang:"
+    
+    if product and product.get("image_id"):
+        try:
+            bot.delete_message(call.message.chat.id, call.message.message_id)
+            bot.send_photo(
+                call.message.chat.id,
+                product["image_id"],
+                caption=text,
+                reply_markup=markup,
+                parse_mode="HTML"
+            )
+        except:
+            bot.edit_message_text(text, call.message.chat.id, call.message.message_id, reply_markup=markup, parse_mode="HTML")
+    else:
+        bot.edit_message_text(text, call.message.chat.id, call.message.message_id, reply_markup=markup, parse_mode="HTML")
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith("product_edit:"))
+def handle_product_edit(call):
+    """Mahsulot tahrirlash"""
+    product_name = call.data.split(":")[1]
+    user_id = call.from_user.id
+    user_states[user_id] = {"action": "editing_product", "old_name": product_name}
+    
+    bot.send_message(
+        call.message.chat.id,
+        "✍️ Yangi mahsulot nomini kiriting:",
+        reply_markup=back_button("product_branch_back")
+    )
+
+@bot.message_handler(func=lambda message: user_states.get(message.from_user.id, {}).get("action") == "editing_product")
+def process_product_edit(message):
+    """Mahsulot nomini o'zgartirish"""
+    user_id = message.from_user.id
+    data = user_states.get(user_id, {})
+    old_name = data.get("old_name")
+    new_name = message.text.strip()
+    
+    db = get_db()
+    db.update_product(old_name, new_name)
+    
+    bot.send_message(message.chat.id, MESSAGES["product_added"].format(new_name))
+    user_states.pop(user_id, None)
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith("product_delete:"))
+def handle_product_delete(call):
+    """Mahsulot o'chirish"""
+    product_name = call.data.split(":")[1]
+    db = get_db()
+    db.delete_product(product_name)
+    
+    user_id = call.from_user.id
+    data = user_states.get(user_id, {})
+    branch = data.get("branch")
+    
+    bot.edit_message_text(
+        MESSAGES["product_deleted"],
+        call.message.chat.id,
+        call.message.message_id,
+        reply_markup=products_menu(branch)
     )
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("product_add:"))
@@ -198,7 +308,7 @@ def handle_product_add(call):
     bot.send_message(
         call.message.chat.id,
         MESSAGES["product_add_name"],
-        reply_markup=back_button("admin_product")
+        reply_markup=back_button("product_branch_back")
     )
 
 @bot.message_handler(func=lambda message: user_states.get(message.from_user.id, {}).get("action") == "adding_product")
@@ -227,7 +337,7 @@ def handle_product_image_yes(call):
     bot.send_message(
         call.message.chat.id,
         MESSAGES["product_send_image"],
-        reply_markup=back_button("admin_product")
+        reply_markup=back_button("product_branch_back")
     )
 
 @bot.callback_query_handler(func=lambda call: call.data == "product_add_image_no")
@@ -285,9 +395,9 @@ def handle_admin_list(call):
     for branch in branches:
         markup.add(telebot.types.InlineKeyboardButton(
             text=branch["name"],
-            callback_data=f"list_branch:{branch['name']}"
+            callback_data=f"admin_list_branch:{branch['name']}"
         ))
-    markup.add(telebot.types.InlineKeyboardButton("🌍 Umumiy", callback_data="list_branch:common"))
+    markup.add(telebot.types.InlineKeyboardButton("🌍 Umumiy", callback_data="admin_list_branch:common"))
     markup.add(telebot.types.InlineKeyboardButton(MESSAGES["button_back"], callback_data="admin_back"))
     
     bot.edit_message_text(
@@ -297,9 +407,9 @@ def handle_admin_list(call):
         reply_markup=markup
     )
 
-@bot.callback_query_handler(func=lambda call: call.data.startswith("list_branch:"))
-def handle_list_branch(call):
-    """Filial ro'yxati ko'rish"""
+@bot.callback_query_handler(func=lambda call: call.data.startswith("admin_list_branch:"))
+def handle_admin_list_branch(call):
+    """Admin filial ro'yxati"""
     branch = call.data.split(":")[1]
     if branch == "common":
         branch = None
@@ -366,12 +476,35 @@ def handle_user_input_product(call):
     data["product_name"] = product_name
     user_states[user_id] = data
     
-    bot.send_message(
-        call.message.chat.id,
-        f"📦 <b>{product_name}</b>\n\n{MESSAGES['user_enter_quantity']}",
-        parse_mode="HTML",
-        reply_markup=back_button("user_input")
-    )
+    db = get_db()
+    product = db.get_product_by_name(product_name)
+    
+    text = f"📦 <b>{product_name}</b>\n\n{MESSAGES['user_enter_quantity']}"
+    
+    if product and product.get("image_id"):
+        try:
+            bot.delete_message(call.message.chat.id, call.message.message_id)
+            bot.send_photo(
+                call.message.chat.id,
+                product["image_id"],
+                caption=text,
+                reply_markup=back_button("user_input_back"),
+                parse_mode="HTML"
+            )
+        except:
+            bot.send_message(
+                call.message.chat.id,
+                text,
+                parse_mode="HTML",
+                reply_markup=back_button("user_input_back")
+            )
+    else:
+        bot.send_message(
+            call.message.chat.id,
+            text,
+            parse_mode="HTML",
+            reply_markup=back_button("user_input_back")
+        )
 
 @bot.message_handler(func=lambda message: user_states.get(message.from_user.id, {}).get("action") == "entering_input_quantity")
 def process_input_quantity(message):
@@ -441,12 +574,38 @@ def handle_user_remove_product(call):
     data["product_name"] = product_name
     user_states[user_id] = data
     
-    bot.send_message(
-        call.message.chat.id,
-        f"📦 <b>{product_name}</b>\n\n{MESSAGES['user_enter_quantity']}",
-        parse_mode="HTML",
-        reply_markup=back_button("user_remove")
-    )
+    db = get_db()
+    product = db.get_product_by_name(product_name)
+    branch = data.get("branch")
+    inventory = db.get_inventory(product_name, branch)
+    current_qty = inventory.get("quantity", 0)
+    
+    text = f"📦 <b>{product_name}</b>\n📊 Mavjud: <b>{current_qty}</b> dona\n\n{MESSAGES['user_enter_quantity']}"
+    
+    if product and product.get("image_id"):
+        try:
+            bot.delete_message(call.message.chat.id, call.message.message_id)
+            bot.send_photo(
+                call.message.chat.id,
+                product["image_id"],
+                caption=text,
+                reply_markup=back_button("user_remove_back"),
+                parse_mode="HTML"
+            )
+        except:
+            bot.send_message(
+                call.message.chat.id,
+                text,
+                parse_mode="HTML",
+                reply_markup=back_button("user_remove_back")
+            )
+    else:
+        bot.send_message(
+            call.message.chat.id,
+            text,
+            parse_mode="HTML",
+            reply_markup=back_button("user_remove_back")
+        )
 
 @bot.message_handler(func=lambda message: user_states.get(message.from_user.id, {}).get("action") == "entering_remove_quantity")
 def process_remove_quantity(message):
@@ -485,6 +644,35 @@ def handle_user_list(call):
         call.message.chat.id,
         call.message.message_id,
         reply_markup=list_branches_menu()
+    )
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith("list_branch:"))
+def handle_list_branch(call):
+    """Filial ro'yxati ko'rish"""
+    branch = call.data.split(":")[1]
+    if branch == "common":
+        branch = None
+    
+    db = get_db()
+    products = db.get_products_by_branch(branch)
+    
+    text = MESSAGES["list_title"] + "\n\n"
+    
+    if not products:
+        text = MESSAGES["list_empty"]
+    else:
+        for idx, product in enumerate(products, 1):
+            inventory = db.get_inventory(product["name"], branch)
+            quantity = inventory.get("quantity", 0)
+            icon = "📷 " if product.get("image_id") else ""
+            text += f"{idx}. {product['name']}: <b>{quantity}</b> dona {icon}\n"
+    
+    bot.edit_message_text(
+        text,
+        call.message.chat.id,
+        call.message.message_id,
+        reply_markup=back_button("user_list"),
+        parse_mode="HTML"
     )
 
 # ==================== REQUEST HANDLERS ====================
@@ -564,7 +752,10 @@ def handle_reject_user(call):
 @bot.callback_query_handler(func=lambda call: call.data == "close_menu")
 def handle_close_menu(call):
     """Menyu yopish"""
-    bot.delete_message(call.message.chat.id, call.message.message_id)
+    try:
+        bot.delete_message(call.message.chat.id, call.message.message_id)
+    except:
+        pass
     bot.answer_callback_query(call.id)
 
 @bot.callback_query_handler(func=lambda call: call.data == "admin_back")
@@ -580,12 +771,18 @@ def handle_admin_back(call):
 @bot.callback_query_handler(func=lambda call: call.data == "user_main")
 def handle_user_main(call):
     """Foydalanuvchi asosiy menyu"""
-    bot.delete_message(call.message.chat.id, call.message.message_id)
+    try:
+        bot.delete_message(call.message.chat.id, call.message.message_id)
+    except:
+        pass
     bot.send_message(call.message.chat.id, "👋 Asosiy Menyu", reply_markup=user_main_menu())
 
 @bot.callback_query_handler(func=lambda call: call.data == "product_branch_back")
 def handle_product_branch_back(call):
     """Mahsulot turi tanlashga qaytish"""
+    user_id = call.from_user.id
+    user_states.pop(user_id, None)
+    
     bot.edit_message_text(
         MESSAGES["product_management"],
         call.message.chat.id,
@@ -595,7 +792,10 @@ def handle_product_branch_back(call):
 
 @bot.callback_query_handler(func=lambda call: call.data == "product_type_back")
 def handle_product_type_back(call):
-    """Mahsulot turidan orqaga"""
+    """Mahsulot turidan orqaba"""
+    user_id = call.from_user.id
+    user_states.pop(user_id, None)
+    
     bot.edit_message_text(
         MESSAGES["product_management"],
         call.message.chat.id,
@@ -603,22 +803,11 @@ def handle_product_type_back(call):
         reply_markup=product_type_menu()
     )
 
-@bot.callback_query_handler(func=lambda call: call.data == "admin_branch")
-def handle_admin_branch_back(call):
-    """Admin branch menyuga qaytish"""
-    bot.edit_message_text(
-        MESSAGES["branch_management"],
-        call.message.chat.id,
-        call.message.message_id,
-        reply_markup=branches_menu()
-    )
-
 @bot.callback_query_handler(func=lambda call: call.data == "user_input_back")
 def handle_user_input_back(call):
     """Kiritishdan orqaga"""
     user_id = call.from_user.id
-    data = user_states.get(user_id, {})
-    branch = data.get("branch")
+    user_states.pop(user_id, None)
     
     bot.edit_message_text(
         MESSAGES["user_add_product"],
@@ -626,7 +815,6 @@ def handle_user_input_back(call):
         call.message.message_id,
         reply_markup=branches_menu_user("input")
     )
-    user_states.pop(user_id, None)
 
 @bot.callback_query_handler(func=lambda call: call.data == "user_remove_back")
 def handle_user_remove_back(call):
@@ -639,6 +827,19 @@ def handle_user_remove_back(call):
         call.message.chat.id,
         call.message.message_id,
         reply_markup=branches_menu_user("remove")
+    )
+
+@bot.callback_query_handler(func=lambda call: call.data == "user_list")
+def handle_user_list_back(call):
+    """Ro'yxatdan orqaba"""
+    user_id = call.from_user.id
+    user_states.pop(user_id, None)
+    
+    bot.edit_message_text(
+        "📋 Ro'yxat\n\nFilial tanlang:",
+        call.message.chat.id,
+        call.message.message_id,
+        reply_markup=list_branches_menu()
     )
 
 # ==================== WEBHOOK (FLASK) ====================
