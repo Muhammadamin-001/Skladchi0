@@ -3,7 +3,7 @@ import logging
 import os
 import time
 from flask import Flask, request
-from config.settings import BOT_TOKEN, ADMIN_ID, MESSAGES
+from config.settings import BOT_TOKEN, ADMIN_ID, MESSAGES, WAREHOUSE_NAME
 from database.mongodb import init_db, get_db
 from keyboards.telebot_keyboards import (
     admin_main_menu,
@@ -276,11 +276,10 @@ def process_input_quantity(message):
         
         data = get_user_state_data(user_id)
         product_name = data.get("product_name")
-        branch = data.get("branch")
         product_type = data.get("product_type")
         
         db = get_db()
-        new_qty = db.add_inventory(product_name, branch, quantity)
+        new_qty = db.add_inventory(product_name, quantity)
         
         user_states.pop(user_id, None)
         
@@ -309,13 +308,20 @@ def process_remove_quantity(message):
         product_type = data.get("product_type")
         
         db = get_db()
-        new_qty = db.remove_inventory(product_name, branch, quantity)
+        new_qty = db.remove_inventory(product_name, quantity)
+
+        if new_qty is None:
+            bot.send_message(
+                message.chat.id,
+                "❌ Omborda buncha mahsulot yo'q. Qaytadan to'g'ri miqdor kiriting."
+            )
+            return
         
         user_states.pop(user_id, None)
         
         bot.send_message(
             message.chat.id,
-            MESSAGES["user_product_removed"].format(product_name, quantity, new_qty),
+            MESSAGES["user_product_removed"].format(product_name, branch, quantity, new_qty),
             reply_markup=products_by_type_menu_user(product_type, "remove")
         )
     except ValueError:
@@ -698,7 +704,7 @@ def handle_user_input(call):
     user_states.pop(user_id, None)
     
     bot.edit_message_text(
-        "📦 Mahsulot Kiritamiz\n\nMahsulot turini tanlang:",
+        f"📦 Mahsulot Kiritamiz\n\nMahsulot turini tanlang:\n(Barcha kiritishlar <b>{WAREHOUSE_NAME}</b> ga qo'shiladi)",
         call.message.chat.id,
         call.message.message_id,
         reply_markup=product_types_menu_user("input")
@@ -727,14 +733,14 @@ def handle_user_input_product(call):
     user_id = call.from_user.id
     
     data = get_user_state_data(user_id)
-    data["action"] = "selecting_input_branch"
+    data["action"] =  "entering_input_quantity"
     data["product_name"] = product_name
     user_states[user_id] = data
     
     db = get_db()
     product = db.get_product_by_name(product_name)
     
-    text = f"📦 <b>{product_name}</b>\n\n🏢 Qaysi filialga kiritmoqchisiz?"
+    text = f"📦 <b>{product_name}</b>\n🏢 Sklad: <b>{WAREHOUSE_NAME}</b>\n\n{MESSAGES['user_enter_quantity']}"
     
     if product and product.get("image_id"):
         try:
@@ -743,7 +749,7 @@ def handle_user_input_product(call):
                 call.message.chat.id,
                 product["image_id"],
                 caption=text,
-                reply_markup=branches_menu_user("input"),
+                reply_markup=back_button("user_input_back"),
                 parse_mode="HTML"
             )
         except:
@@ -751,35 +757,17 @@ def handle_user_input_product(call):
                 call.message.chat.id,
                 text,
                 parse_mode="HTML",
-                reply_markup=branches_menu_user("input")
+                reply_markup=back_button("user_input_back")
             )
     else:
         bot.send_message(
             call.message.chat.id,
             text,
             parse_mode="HTML",
-            reply_markup=branches_menu_user("input")
+            reply_markup=back_button("user_input_back")
         )
 
-@bot.callback_query_handler(func=lambda call: call.data.startswith("user_input_branch:"))
-def handle_user_input_branch(call):
-    """Kiritish filiali tanlandi"""
-    branch = call.data.split(":")[1]
-    user_id = call.from_user.id
-    
-    data = get_user_state_data(user_id)
-    data["action"] = "entering_input_quantity"
-    data["branch"] = branch
-    user_states[user_id] = data
-    
-    product_name = data.get("product_name")
-    
-    bot.send_message(
-        call.message.chat.id,
-        f"📦 <b>{product_name}</b>\n🏢 <b>{branch}</b>\n\n{MESSAGES['user_enter_quantity']}",
-        parse_mode="HTML",
-        reply_markup=back_button("user_input_back")
-    )
+
 
 # ==================== USER REMOVE CALLBACKS ====================
 
@@ -866,12 +854,12 @@ def handle_user_remove_branch(call):
     
     product_name = data.get("product_name")
     db = get_db()
-    inventory = db.get_inventory(product_name, branch)
+    inventory = db.get_total_inventory_by_product(product_name)
     current_qty = inventory.get("quantity", 0)
     
     bot.send_message(
         call.message.chat.id,
-        f"📦 <b>{product_name}</b>\n🏢 <b>{branch}</b>\n📊 Mavjud: <b>{current_qty}</b> dona\n\n{MESSAGES['user_enter_quantity']}",
+        f"📦 <b>{product_name}</b>\n🏢 Yuboriladigan filial: <b>{branch}</b>\n📊 Skladdagi qoldiq: <b>{current_qty}</b> \n\n{MESSAGES['user_enter_quantity']}",
         parse_mode="HTML",
         reply_markup=back_button("user_remove_back")
     )

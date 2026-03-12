@@ -10,7 +10,7 @@ ADMIN_ID = int(os.getenv("ADMIN_ID", 0))
 # MongoDB
 MONGO_URI = os.getenv("MONGO_URI")
 DB_NAME = "inventory_bot"
-
+WAREHOUSE_NAME = "Umumiy sklad"
 # Settings
 ITEMS_PER_PAGE = 5
 
@@ -34,11 +34,11 @@ MESSAGES = {
     "product_added": "✅ Mahsulot '{}' qo'shildi",
     "product_deleted": "🗑️ Mahsulot o'chirildi",
     
-    "user_add_product": "📥 Mahsulot Kiritamiz\n\nFilial tanlang:",
-    "user_remove_product": "📤 Mahsulot Chiqaramiz\n\nFilial tanlang:",
+    "user_add_product": "📥 Mahsulot Kiritamiz\n\nMahsulotlar avtomatik ravishda Umumiy skladga qo'shiladi.",
+    "user_remove_product": "📤 Mahsulot Chiqaramiz\n\nQaysi filialga yuborilishini tanlang:",
     "user_enter_quantity": "💬 Miqdorni kiriting:",
     "user_product_added": "✅ Mahsulot qo'shildi!\n\n📦 {}\n➕ +{} dona\n📊 Jami: {} dona",
-    "user_product_removed": "✅ Mahsulot chiqarildi!\n\n📦 {}\n➖ -{} dona\n📊 Qoldi: {} dona",
+    "user_product_removed": "✅ Mahsulot chiqarildi!\n\n📦 {}\n🏢 Filial: {}\n➖ -{} dona\n📊 Skladda qoldi: {} dona",
     
     "list_title": "📋 Mahsulotlar Ro'yxati",
     "list_empty": "📋 Mahsulotlar yo'q",

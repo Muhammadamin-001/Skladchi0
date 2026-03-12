@@ -1,6 +1,6 @@
 from pymongo import MongoClient
 from pymongo.errors import DuplicateKeyError
-from config.settings import MONGO_URI, DB_NAME
+from config.settings import MONGO_URI, DB_NAME, WAREHOUSE_NAME
 from datetime import datetime
 import logging
 
@@ -249,7 +249,7 @@ class MongoDBManager:
 
     # ==================== INVENTORY ====================
     
-    def get_inventory(self, product_name, branch=None):
+    def get_inventory(self, product_name, branch=WAREHOUSE_NAME):
         """Inventarni olish"""
         query = {"product_name": product_name, "branch": branch}
         result = self.db["inventory"].find_one(query)
@@ -264,49 +264,58 @@ class MongoDBManager:
             logger.error(f"❌ Inventory olishda xato: {e}")
             return []
 
-    def add_inventory(self, product_name, branch, quantity):
-        """Inventarga qo'shish"""
+    def get_total_inventory_by_product(self, product_name):
+        """Umumiy sklad bo'yicha mahsulot qoldig'ini olish"""
+        return self.get_inventory(product_name, WAREHOUSE_NAME)
+
+    def add_inventory(self, product_name, quantity):
+        """Umumiy sklad inventariga qo'shish"""
+        
         try:
-            current = self.get_inventory(product_name, branch)
+            current = self.get_inventory(product_name, WAREHOUSE_NAME)
             new_quantity = current.get("quantity", 0) + quantity
             
-            result = self.db["inventory"].update_one(
-                {"product_name": product_name, "branch": branch},
+            self.db["inventory"].update_one(
+                {"product_name": product_name, "branch": WAREHOUSE_NAME},
                 {"$set": {
                     "product_name": product_name,
-                    "branch": branch,
+                    "branch": WAREHOUSE_NAME,
                     "quantity": new_quantity,
                     "updated_at": datetime.utcnow()
                 }},
                 upsert=True
             )
-            logger.info(f"✅ Inventory qo'shildi: {product_name} (+{quantity})")
+            logger.info(f"✅ Umumiy skladga qo'shildi: {product_name} (+{quantity})")
             return new_quantity
         except Exception as e:
             logger.error(f"❌ Inventory qo'shishda xato: {e}")
             return 0
 
-    def remove_inventory(self, product_name, branch, quantity):
-        """Inventardan ayirish"""
+    def remove_inventory(self, product_name, quantity):
+        """Umumiy sklad inventaridan ayirish"""
         try:
-            current = self.get_inventory(product_name, branch)
-            new_quantity = max(0, current.get("quantity", 0) - quantity)
-            
-            result = self.db["inventory"].update_one(
-                {"product_name": product_name, "branch": branch},
+            current = self.get_inventory(product_name, WAREHOUSE_NAME)
+            current_qty = current.get("quantity", 0)
+            if quantity > current_qty:
+                return None
+
+            new_quantity = current_qty - quantity
+
+            self.db["inventory"].update_one(
+                {"product_name": product_name, "branch": WAREHOUSE_NAME},
                 {"$set": {
                     "product_name": product_name,
-                    "branch": branch,
+                    "branch": WAREHOUSE_NAME,
                     "quantity": new_quantity,
                     "updated_at": datetime.utcnow()
                 }},
                 upsert=True
             )
-            logger.info(f"✅ Inventory ayirildi: {product_name} (-{quantity})")
+            logger.info(f"✅ Umumiy skladdan ayirildi: {product_name} (-{quantity})")
             return new_quantity
         except Exception as e:
             logger.error(f"❌ Inventory ayirishda xato: {e}")
-            return 0
+            return None
 
     # ==================== REQUESTS ====================
     
