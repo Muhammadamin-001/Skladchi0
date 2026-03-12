@@ -186,7 +186,12 @@ def branches_menu_user(action="input"):
             callback_data=f"user_{action}_branch:{branch['name']}"
         ))
     
-    markup.add(telebot.types.InlineKeyboardButton(MESSAGES["button_back"], callback_data="user_main"))
+    markup.add(
+       telebot.types.InlineKeyboardButton(
+           MESSAGES["button_back"],
+           callback_data=f"user_{action}_back"
+       )
+   )
     return markup
 
 def list_branches_menu():
