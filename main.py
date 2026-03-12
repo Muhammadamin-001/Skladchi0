@@ -195,6 +195,7 @@ def handle_product_type_select(call):
 def handle_product_type_add(call):
     """Yangi mahsulot turi qo'shish"""
     user_id = call.from_user.id
+    bot.delete_message(call.message.chat.id, call.message.message_id)
     user_states[user_id] = "waiting_product_type_name"
     
     bot.send_message(
@@ -206,21 +207,21 @@ def handle_product_type_add(call):
 @bot.message_handler(func=lambda message: user_states.get(message.from_user.id) == "waiting_product_type_name")
 def process_product_type_add(message):
     """Mahsulot turi nomini saqlash"""
+    user_id = message.from_user.id
     db = get_db()
     name = message.text.strip()
-    user_id = message.from_user.id
     
     if db.add_product_type(name):
         user_states.pop(user_id, None)
         bot.send_message(
             message.chat.id,
-            MESSAGES["branch_added"].format(name),
+            f"✅ Mahsulot turi '{name}' qo'shildi",
             reply_markup=product_types_menu()
         )
     else:
         bot.send_message(
             message.chat.id,
-            MESSAGES["branch_exists"],
+            f"❌ '{name}' nomli tur allaqachon mavjud",
             reply_markup=back_button("admin_product")
         )
         user_states.pop(user_id, None)
