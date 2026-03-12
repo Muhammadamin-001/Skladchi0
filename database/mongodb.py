@@ -28,31 +28,33 @@ class MongoDBManager:
                 self.db.create_collection("users")
                 self.db["users"].create_index("user_id", unique=True)
             
-            if "product_types" not in self.db.list_collection_names():
-                self.db.create_collection("product_types")
-                self.db["product_types"].create_index("name", unique=True)
-            
-            if "products" not in self.db.list_collection_names():
-                self.db.create_collection("products")
-                self.db["products"].create_index([("name", 1), ("type", 1)], unique=True)
-            
             if "branches" not in self.db.list_collection_names():
                 self.db.create_collection("branches")
                 self.db["branches"].create_index("name", unique=True)
             
+            # ✅ PRODUCT_TYPES COLLECTION YARATISH
+            if "product_types" not in self.db.list_collection_names():
+                self.db.create_collection("product_types")
+                self.db["product_types"].create_index("name", unique=True)
+                logger.info("✅ product_types collection yaratildi")
+            
+            if "products" not in self.db.list_collection_names():
+                self.db.create_collection("products")
+                self.db["products"].create_index("name", unique=True)
+            
             if "inventory" not in self.db.list_collection_names():
                 self.db.create_collection("inventory")
-                self.db["inventory"].create_index([("product_id", 1), ("branch", 1)], unique=True)
+                self.db["inventory"].create_index([("product_name", 1), ("branch", 1)], unique=True)
             
             if "requests" not in self.db.list_collection_names():
                 self.db.create_collection("requests")
                 self.db["requests"].create_index("user_id", unique=True)
             
-            logger.info("✅ To'plamlar tayyor")
+            logger.info("✅ Barcha to'plamlar tayyor")
         except Exception as e:
             logger.error(f"❌ To'plamlarni yaratishda xato: {e}")
 
-    # ==================== FOYDALANUVCHILAR ====================
+    # ==================== USERS ====================
     
     def add_user(self, user_id, username, first_name, approved=False):
         try:
@@ -79,121 +81,27 @@ class MongoDBManager:
     def reject_user(self, user_id):
         self.db["users"].delete_one({"user_id": user_id})
 
-    # ==================== MAHSULOT TURLARI (BREND) ====================
-    
-    def add_product_type(self, name):
-        """Yangi mahsulot turi (brend) qo'shish"""
-        try:
-            self.db["product_types"].insert_one({
-                "name": name,
-                "created_at": datetime.utcnow()
-            })
-            return True
-        except DuplicateKeyError:
-            return False
-
-    def get_all_product_types(self):
-        """Barcha mahsulot turlarini olish"""
-        return list(self.db["product_types"].find({}).sort("name", 1))
-
-    def get_product_type_by_name(self, name):
-        """Mahsulot turini nomiga ko'ra olish"""
-        return self.db["product_types"].find_one({"name": name})
-
-    def update_product_type(self, old_name, new_name):
-        """Mahsulot turi nomini o'zgartirish"""
-        try:
-            result = self.db["product_types"].update_one(
-                {"name": old_name},
-                {"$set": {"name": new_name}}
-            )
-            return result.modified_count > 0
-        except DuplicateKeyError:
-            return False
-
-    def delete_product_type(self, name):
-        """Mahsulot turini o'chirish"""
-        self.db["product_types"].delete_one({"name": name})
-        # Tegishli mahsulotlarni ham o'chirish
-        self.db["products"].delete_many({"type": name})
-
-    # ==================== MAHSULOTLAR ====================
-    
-    def add_product(self, name, product_type, image_id=None):
-        """Yangi mahsulot qo'shish
-        
-        Args:
-            name: Mahsulot nomi
-            product_type: Mahsulot turi (brend)
-            image_id: Telegram rasm ID
-        """
-        try:
-            self.db["products"].insert_one({
-                "name": name,
-                "type": product_type,
-                "image_id": image_id,
-                "created_at": datetime.utcnow()
-            })
-            return True
-        except DuplicateKeyError:
-            return False
-
-    def get_products_by_type(self, product_type):
-        """Mahsulot turiga ko'ra mahsulotlarni olish"""
-        query = {"type": product_type}
-        return list(self.db["products"].find(query).sort("name", 1))
-
-    def get_product_by_name(self, name):
-        """Mahsulot nomiga ko'ra olish"""
-        return self.db["products"].find_one({"name": name})
-
-    def get_product_by_name_and_type(self, name, product_type):
-        """Mahsulot nomiga va turiga ko'ra olish"""
-        return self.db["products"].find_one({"name": name, "type": product_type})
-
-    def update_product(self, old_name, new_name=None, product_type=None):
-        """Mahsulotni tahrirlash"""
-        update_data = {}
-        if new_name:
-            update_data["name"] = new_name
-        if product_type:
-            update_data["type"] = product_type
-        
-        if update_data:
-            self.db["products"].update_one(
-                {"name": old_name},
-                {"$set": update_data}
-            )
-
-    def delete_product(self, name):
-        """Mahsulot o'chirish"""
-        self.db["products"].delete_one({"name": name})
-        # Tegishli inventarni ham o'chirish
-        self.db["inventory"].delete_many({"product_name": name})
-
-    # ==================== FILIALLAR ====================
+    # ==================== BRANCHES ====================
     
     def add_branch(self, name):
-        """Yangi filial qo'shish"""
         try:
             self.db["branches"].insert_one({
                 "name": name,
                 "created_at": datetime.utcnow()
             })
+            logger.info(f"✅ Branch qo'shildi: {name}")
             return True
         except DuplicateKeyError:
+            logger.warning(f"❌ Branch mavjud: {name}")
             return False
 
     def get_all_branches(self):
-        """Barcha filiallarni olish"""
-        return list(self.db["branches"].find({}).sort("name", 1))
+        return list(self.db["branches"].find({}))
 
     def get_branch_by_name(self, name):
-        """Filialni nomiga ko'ra olish"""
         return self.db["branches"].find_one({"name": name})
 
     def update_branch(self, old_name, new_name):
-        """Filial nomini o'zgartirish"""
         try:
             result = self.db["branches"].update_one(
                 {"name": old_name},
@@ -204,93 +112,206 @@ class MongoDBManager:
             return False
 
     def delete_branch(self, name):
-        """Filial o'chirish"""
         self.db["branches"].delete_one({"name": name})
 
-    # ==================== INVENTAR ====================
+    # ==================== PRODUCT TYPES (YANGI!) ====================
+    # ✅ BU KRITIK - OLDINROQ BU JOYDA!
+
+    def add_product_type(self, name):
+        """Mahsulot turi qo'shish"""
+        try:
+            result = self.db["product_types"].insert_one({
+                "name": name,
+                "created_at": datetime.utcnow()
+            })
+            logger.info(f"✅ Product type qo'shildi: {name}, ID: {result.inserted_id}")
+            return True
+        except DuplicateKeyError:
+            logger.warning(f"❌ Product type mavjud: {name}")
+            return False
+        except Exception as e:
+            logger.error(f"❌ Product type qo'shishda xato: {e}")
+            return False
+
+    def get_all_product_types(self):
+        """Barcha mahsulot turlarini olish"""
+        try:
+            types = list(self.db["product_types"].find({}))
+            logger.info(f"✅ Product types olindi: {len(types)} ta")
+            return types
+        except Exception as e:
+            logger.error(f"❌ Product types olishda xato: {e}")
+            return []
+
+    def get_product_type_by_name(self, name):
+        """Mahsulot turini nomga ko'ra olish"""
+        return self.db["product_types"].find_one({"name": name})
+
+    def update_product_type(self, old_name, new_name):
+        """Mahsulot turini tahrirlash"""
+        try:
+            result = self.db["product_types"].update_one(
+                {"name": old_name},
+                {"$set": {"name": new_name}}
+            )
+            logger.info(f"✅ Product type tahrirlandi: {old_name} -> {new_name}")
+            return result.modified_count > 0
+        except DuplicateKeyError:
+            logger.warning(f"❌ Product type already exists: {new_name}")
+            return False
+        except Exception as e:
+            logger.error(f"❌ Product type tahrirlashda xato: {e}")
+            return False
+
+    def delete_product_type(self, name):
+        """Mahsulot turini o'chirish"""
+        try:
+            result = self.db["product_types"].delete_one({"name": name})
+            logger.info(f"✅ Product type o'chirildi: {name}")
+            return result.deleted_count > 0
+        except Exception as e:
+            logger.error(f"❌ Product type o'chirishda xato: {e}")
+            return False
+
+    # ==================== PRODUCTS ====================
     
-    def get_inventory(self, product_name, branch):
-        """Mahsulot inventarini olish (filialga xos)"""
+    def add_product(self, name, product_type, image_id=None):
+        """Mahsulot qo'shish"""
+        try:
+            result = self.db["products"].insert_one({
+                "name": name,
+                "product_type": product_type,  # ✅ PRODUCT TYPE REFERENCE
+                "image_id": image_id,
+                "created_at": datetime.utcnow()
+            })
+            logger.info(f"✅ Product qo'shildi: {name} (type: {product_type})")
+            return True
+        except DuplicateKeyError:
+            logger.warning(f"❌ Product mavjud: {name}")
+            return False
+        except Exception as e:
+            logger.error(f"❌ Product qo'shishda xato: {e}")
+            return False
+
+    def get_products_by_type(self, product_type):
+        """Mahsulot turiga ko'ra mahsulotlar olish"""
+        try:
+            products = list(self.db["products"].find({"product_type": product_type}).sort("name", 1))
+            logger.info(f"✅ Products olindi (type: {product_type}): {len(products)} ta")
+            return products
+        except Exception as e:
+            logger.error(f"❌ Products olishda xato: {e}")
+            return []
+
+    def get_all_products(self):
+        """Barcha mahsulotlarni olish"""
+        try:
+            products = list(self.db["products"].find({}).sort("name", 1))
+            return products
+        except Exception as e:
+            logger.error(f"❌ All products olishda xato: {e}")
+            return []
+
+    def get_product_by_name(self, name):
+        """Mahsulotni nomga ko'ra olish"""
+        return self.db["products"].find_one({"name": name})
+
+    def update_product(self, name, new_name=None, product_type=None):
+        """Mahsulotni tahrirlash"""
+        try:
+            update_data = {}
+            if new_name:
+                update_data["name"] = new_name
+            if product_type:
+                update_data["product_type"] = product_type
+            
+            if update_data:
+                result = self.db["products"].update_one(
+                    {"name": name},
+                    {"$set": update_data}
+                )
+                logger.info(f"✅ Product tahrirlandi: {name}")
+                return result.modified_count > 0
+            return False
+        except Exception as e:
+            logger.error(f"❌ Product tahrirlashda xato: {e}")
+            return False
+
+    def delete_product(self, name):
+        """Mahsulotni o'chirish"""
+        try:
+            result = self.db["products"].delete_one({"name": name})
+            logger.info(f"✅ Product o'chirildi: {name}")
+            return result.deleted_count > 0
+        except Exception as e:
+            logger.error(f"❌ Product o'chirishda xato: {e}")
+            return False
+
+    # ==================== INVENTORY ====================
+    
+    def get_inventory(self, product_name, branch=None):
+        """Inventarni olish"""
         query = {"product_name": product_name, "branch": branch}
         result = self.db["inventory"].find_one(query)
         return result if result else {"quantity": 0}
 
+    def get_inventory_by_branch(self, branch):
+        """Filial bo'yicha inventarni olish"""
+        try:
+            inventory = list(self.db["inventory"].find({"branch": branch}))
+            return inventory
+        except Exception as e:
+            logger.error(f"❌ Inventory olishda xato: {e}")
+            return []
+
     def add_inventory(self, product_name, branch, quantity):
-        """Inventarga mahsulot qo'shish"""
-        current = self.get_inventory(product_name, branch)
-        new_quantity = current.get("quantity", 0) + quantity
-        
-        self.db["inventory"].update_one(
-            {"product_name": product_name, "branch": branch},
-            {"$set": {
-                "product_name": product_name,
-                "branch": branch,
-                "quantity": new_quantity,
-                "updated_at": datetime.utcnow()
-            }},
-            upsert=True
-        )
-        
-        # Tarix qidiruviga qo'shish (filial qaysi mahsulotdan qancha olgani)
-        self.db["inventory"].update_one(
-            {"product_name": product_name, "branch": branch},
-            {
-                "$push": {
-                    "history": {
-                        "action": "add",
-                        "quantity": quantity,
-                        "timestamp": datetime.utcnow()
-                    }
-                }
-            }
-        )
-        
-        return new_quantity
+        """Inventarga qo'shish"""
+        try:
+            current = self.get_inventory(product_name, branch)
+            new_quantity = current.get("quantity", 0) + quantity
+            
+            result = self.db["inventory"].update_one(
+                {"product_name": product_name, "branch": branch},
+                {"$set": {
+                    "product_name": product_name,
+                    "branch": branch,
+                    "quantity": new_quantity,
+                    "updated_at": datetime.utcnow()
+                }},
+                upsert=True
+            )
+            logger.info(f"✅ Inventory qo'shildi: {product_name} (+{quantity})")
+            return new_quantity
+        except Exception as e:
+            logger.error(f"❌ Inventory qo'shishda xato: {e}")
+            return 0
 
     def remove_inventory(self, product_name, branch, quantity):
-        """Inventardan mahsulot chiqarish"""
-        current = self.get_inventory(product_name, branch)
-        new_quantity = max(0, current.get("quantity", 0) - quantity)
-        
-        self.db["inventory"].update_one(
-            {"product_name": product_name, "branch": branch},
-            {"$set": {
-                "product_name": product_name,
-                "branch": branch,
-                "quantity": new_quantity,
-                "updated_at": datetime.utcnow()
-            }},
-            upsert=True
-        )
-        
-        # Tarix qidiruviga qo'shish (filial qaysi mahsulotdan qancha chiqargan)
-        self.db["inventory"].update_one(
-            {"product_name": product_name, "branch": branch},
-            {
-                "$push": {
-                    "history": {
-                        "action": "remove",
-                        "quantity": quantity,
-                        "timestamp": datetime.utcnow()
-                    }
-                }
-            }
-        )
-        
-        return new_quantity
+        """Inventardan ayirish"""
+        try:
+            current = self.get_inventory(product_name, branch)
+            new_quantity = max(0, current.get("quantity", 0) - quantity)
+            
+            result = self.db["inventory"].update_one(
+                {"product_name": product_name, "branch": branch},
+                {"$set": {
+                    "product_name": product_name,
+                    "branch": branch,
+                    "quantity": new_quantity,
+                    "updated_at": datetime.utcnow()
+                }},
+                upsert=True
+            )
+            logger.info(f"✅ Inventory ayirildi: {product_name} (-{quantity})")
+            return new_quantity
+        except Exception as e:
+            logger.error(f"❌ Inventory ayirishda xato: {e}")
+            return 0
 
-    def get_inventory_by_branch(self, branch):
-        """Filialning to'liq inventarini olish"""
-        return list(self.db["inventory"].find({"branch": branch}))
-
-    def get_inventory_by_product(self, product_name):
-        """Mahsulotning barcha filiallardagi inventarini olish"""
-        return list(self.db["inventory"].find({"product_name": product_name}))
-
-    # ==================== SO'ROVLAR ====================
+    # ==================== REQUESTS ====================
     
     def add_request(self, user_id, username):
-        """Yangi so'rov qo'shish"""
+        """So'rov qo'shish"""
         try:
             self.db["requests"].insert_one({
                 "user_id": user_id,
