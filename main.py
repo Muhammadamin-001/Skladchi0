@@ -1,6 +1,7 @@
 import telebot
 import logging
 import os
+import time
 from flask import Flask, request
 from config.settings import BOT_TOKEN, ADMIN_ID, MESSAGES
 from database.mongodb import init_db, get_db
@@ -38,7 +39,7 @@ except Exception as e:
 # ==================== USER STATE STORAGE ====================
 user_states = {}
 
-# ==================== /START - AVVAL! ====================
+# ==================== /START ====================
 
 @bot.message_handler(commands=['start'])
 def handle_start(message):
@@ -47,9 +48,10 @@ def handle_start(message):
     username = message.from_user.username or "NoUsername"
     first_name = message.from_user.first_name or "Foydalanuvchi"
     
-    # ✅ STATE O'CHIRISH - MUHIM!
+    # ✅ STATE O'CHIRISH
     if user_id in user_states:
-        logger.info(f"🗑️ /start: {user_id} ning state o'chirildi: {user_states.pop(user_id)}")
+        old_state = user_states.pop(user_id)
+        logger.info(f"🗑️ /start: {user_id} ning state o'chirildi: {old_state}")
     
     db = get_db()
     user = db.get_user(user_id)
@@ -63,7 +65,7 @@ def handle_start(message):
             db.add_user(user_id, username, first_name, approved=False)
         bot.send_message(user_id, MESSAGES["start_user_unapproved"], reply_markup=user_request_menu())
 
-# ==================== MESSAGE HANDLERS - PRIORITY ====================
+# ==================== BRANCH MESSAGE HANDLERS ====================
 
 @bot.message_handler(func=lambda message: user_states.get(message.from_user.id) == "waiting_branch_name")
 def process_branch_add(message):
@@ -107,47 +109,54 @@ def process_branch_edit(message):
         user_states.pop(user_id, None)
         bot.send_message(message.chat.id, "❌ Xato yuz berdi", reply_markup=back_button("admin_branch"))
 
-# ============ PRODUCT TYPE - ASOSIY HANDLER ============
+# ==================== PRODUCT TYPE MESSAGE HANDLERS ============
+# ⚠️ PRIORITY: Bu handlers callback-lardan OLDIN baholanadi!
 
 @bot.message_handler(func=lambda message: user_states.get(message.from_user.id) == "waiting_product_type_name")
 def process_product_type_add(message):
-    """Mahsulot turi nomini saqlash - CRITICAL HANDLER!"""
+    """Mahsulot turi nomini saqlash"""
     user_id = message.from_user.id
     name = message.text.strip()
     
-    logger.info(f"🔴 PRODUCT TYPE HANDLER: user_id={user_id}, text='{name}', state={user_states.get(user_id)}")
+    # ✅ STATE DOUBLE CHECK
+    current_state = user_states.get(user_id)
+    logger.info(f"🔴 PRODUCT TYPE MESSAGE: user_id={user_id}, text='{name}', current_state={current_state}, time={time.time()}")
     
-    # State tekshir
-    if user_states.get(user_id) != "waiting_product_type_name":
-        logger.warning(f"❌ State noto'g'ri: {user_states.get(user_id)}")
+    if current_state != "waiting_product_type_name":
+        logger.warning(f"❌ State mismatch: expected 'waiting_product_type_name', got '{current_state}'")
         bot.send_message(message.chat.id, "❌ Avval /start bosing yoki Qo'shish tugmasini bosing")
         return
     
     if not name:
-        logger.warning("❌ Bo'sh nom")
+        logger.warning("❌ Bo'sh nom kiritildi")
         bot.send_message(message.chat.id, "❌ Tur nomi bo'sh bo'lishi mumkin emas")
         return
     
     db = get_db()
     
-    if db.add_product_type(name):
+    try:
+        if db.add_product_type(name):
+            user_states.pop(user_id, None)
+            logger.info(f"✅✅✅ TUR QO'SHILDI: '{name}'")
+            
+            bot.send_message(
+                message.chat.id,
+                f"✅ '{name}' turi qo'shildi!",
+                reply_markup=product_types_menu()
+            )
+        else:
+            logger.warning(f"❌ Tur mavjud: {name}")
+            user_states.pop(user_id, None)
+            
+            bot.send_message(
+                message.chat.id,
+                f"❌ '{name}' turi allaqachon mavjud!",
+                reply_markup=back_button("admin_product")
+            )
+    except Exception as e:
+        logger.error(f"❌ Error adding product type: {e}")
         user_states.pop(user_id, None)
-        logger.info(f"✅✅✅ TUR QO'SHILDI MUVAFFAQIYATLI: {name}")
-        
-        bot.send_message(
-            message.chat.id,
-            f"✅ '{name}' turi qo'shildi!",
-            reply_markup=product_types_menu()
-        )
-    else:
-        logger.warning(f"❌ Tur mavjud: {name}")
-        user_states.pop(user_id, None)
-        
-        bot.send_message(
-            message.chat.id,
-            f"❌ '{name}' turi allaqachon mavjud!",
-            reply_markup=back_button("admin_product")
-        )
+        bot.send_message(message.chat.id, f"❌ Xato yuz berdi: {e}")
 
 @bot.message_handler(func=lambda message: user_states.get(message.from_user.id, {}).get("action") == "editing_product_type")
 def process_product_type_edit(message):
@@ -170,6 +179,8 @@ def process_product_type_edit(message):
         logger.warning(f"❌ Tur tahrirlashda xato: {old_name}")
         user_states.pop(user_id, None)
         bot.send_message(message.chat.id, "❌ Xato yuz berdi", reply_markup=back_button("admin_product"))
+
+# ==================== PRODUCT MESSAGE HANDLERS ====================
 
 @bot.message_handler(func=lambda message: user_states.get(message.from_user.id, {}).get("action") == "editing_product")
 def process_product_edit(message):
@@ -233,6 +244,8 @@ def process_product_image(message):
         MESSAGES["product_added"].format(data.get("product_name")),
         reply_markup=products_by_type_menu(product_type)
     )
+
+# ==================== QUANTITY MESSAGE HANDLERS ====================
 
 @bot.message_handler(func=lambda message: user_states.get(message.from_user.id, {}).get("action") == "entering_input_quantity")
 def process_input_quantity(message):
@@ -314,12 +327,15 @@ def handle_admin_branch(call):
 @bot.callback_query_handler(func=lambda call: call.data == "branch_add")
 def handle_branch_add(call):
     """Filial qo'shish"""
+    user_id = call.from_user.id
+    user_states[user_id] = "waiting_branch_name"
+    logger.info(f"🟡 CALLBACK: branch_add, user_id={user_id}, state set to waiting_branch_name")
+    
     bot.send_message(
         call.message.chat.id,
         MESSAGES["branch_add_prompt"],
         reply_markup=back_button("admin_branch")
     )
-    user_states[call.from_user.id] = "waiting_branch_name"
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("branch_select:"))
 def handle_branch_select(call):
@@ -373,7 +389,7 @@ def handle_branch_delete(call):
         reply_markup=branches_menu()
     )
 
-# ==================== ADMIN PRODUCT TYPE HANDLERS ====================
+# ==================== ADMIN PRODUCT HANDLERS ====================
 
 @bot.callback_query_handler(func=lambda call: call.data == "admin_product")
 def handle_admin_product(call):
@@ -383,8 +399,8 @@ def handle_admin_product(call):
         return
     
     user_id = call.from_user.id
-    # ✅ STATE O'CHIRISH - MUHIM!
     user_states.pop(user_id, None)
+    logger.info(f"🟡 CALLBACK: admin_product, user_id={user_id}, state cleared")
     
     bot.edit_message_text(
         MESSAGES["product_management"],
@@ -408,12 +424,13 @@ def handle_product_type_select(call):
         parse_mode="HTML"
     )
 
+# ⚠️ CRITICAL CALLBACK - PRODUCT TYPE ADD
 @bot.callback_query_handler(func=lambda call: call.data == "product_type_add")
 def handle_product_type_add(call):
     """Yangi mahsulot turi qo'shish"""
     user_id = call.from_user.id
     
-    logger.info(f"🟡 CALLBACK: product_type_add, user_id={user_id}")
+    logger.info(f"🟡 CALLBACK: product_type_add CALLED, user_id={user_id}, time={time.time()}")
     
     try:
         bot.delete_message(call.message.chat.id, call.message.message_id)
@@ -421,9 +438,9 @@ def handle_product_type_add(call):
     except Exception as e:
         logger.warning(f"⚠️ Xabarni o'chirishda xato: {e}")
     
-    # ✅ STATE BELGILASH
+    # ✅ STATE SET
     user_states[user_id] = "waiting_product_type_name"
-    logger.info(f"✅ State belgilandi: waiting_product_type_name")
+    logger.info(f"✅ State set: waiting_product_type_name for user {user_id}")
     
     # ✅ XABAR YUBORISH
     bot.send_message(
@@ -432,7 +449,8 @@ def handle_product_type_add(call):
         reply_markup=back_button("admin_product")
     )
     
-    logger.info(f"✅ Message handler uchun xabar yuborildi")
+    logger.info(f"✅ Message handler uchun xabar yuborildi. Now waiting for text input...")
+    logger.info(f"✅ Current state: {user_states.get(user_id)}")
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("product_type_edit:"))
 def handle_product_type_edit(call):
@@ -479,7 +497,7 @@ def handle_product_type_actions(call):
         parse_mode="HTML"
     )
 
-# ==================== ADMIN PRODUCT HANDLERS ====================
+# ==================== PRODUCT CALLBACKS ====================
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("product_select:"))
 def handle_product_select(call):
@@ -594,7 +612,7 @@ def handle_product_image_no(call):
         reply_markup=products_by_type_menu(product_type)
     )
 
-# ==================== ADMIN LIST HANDLERS ====================
+# ==================== LIST CALLBACKS ====================
 
 @bot.callback_query_handler(func=lambda call: call.data == "admin_list")
 def handle_admin_list(call):
@@ -649,7 +667,7 @@ def handle_admin_list_branch(call):
         parse_mode="HTML"
     )
 
-# ==================== USER INPUT HANDLERS ====================
+# ==================== USER INPUT CALLBACKS ====================
 
 @bot.callback_query_handler(func=lambda call: call.data == "user_input")
 def handle_user_input(call):
@@ -741,7 +759,7 @@ def handle_user_input_branch(call):
         reply_markup=back_button("user_input_back")
     )
 
-# ==================== USER REMOVE HANDLERS ====================
+# ==================== USER REMOVE CALLBACKS ====================
 
 @bot.callback_query_handler(func=lambda call: call.data == "user_remove")
 def handle_user_remove(call):
@@ -836,7 +854,7 @@ def handle_user_remove_branch(call):
         reply_markup=back_button("user_remove_back")
     )
 
-# ==================== USER LIST HANDLERS ====================
+# ==================== USER LIST CALLBACKS ====================
 
 @bot.callback_query_handler(func=lambda call: call.data == "user_list")
 def handle_user_list(call):
@@ -955,6 +973,9 @@ def handle_reject_user(call):
 @bot.callback_query_handler(func=lambda call: call.data == "close_menu")
 def handle_close_menu(call):
     """Menyu yopish"""
+    user_id = call.from_user.id
+    user_states.pop(user_id, None)
+    
     try:
         bot.delete_message(call.message.chat.id, call.message.message_id)
     except:
@@ -1046,7 +1067,7 @@ def handle_user_list_back(call):
         reply_markup=list_branches_menu()
     )
 
-# ==================== WEBHOOK (FLASK) ====================
+# ==================== WEBHOOK ====================
 
 @app.route('/' + BOT_TOKEN, methods=['POST'])
 def webhook():
