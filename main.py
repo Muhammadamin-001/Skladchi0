@@ -59,6 +59,231 @@ def handle_start(message):
             db.add_user(user_id, username, first_name, approved=False)
         bot.send_message(user_id, MESSAGES["start_user_unapproved"], reply_markup=user_request_menu())
 
+# ==================== MESSAGE HANDLERS - PRIORITY ====================
+# Bu handlerlar AVVAL joyni oladi, callback handlerlardan OLDIN!
+
+@bot.message_handler(func=lambda message: user_states.get(message.from_user.id) == "waiting_branch_name")
+def process_branch_add(message):
+    """Filial nomini saqlash"""
+    db = get_db()
+    name = message.text.strip()
+    user_id = message.from_user.id
+    
+    if not name:
+        bot.send_message(message.chat.id, "❌ Filial nomi bo'sh bo'lishi mumkin emas")
+        return
+    
+    if db.add_branch(name):
+        user_states.pop(user_id, None)
+        bot.send_message(message.chat.id, MESSAGES["branch_added"].format(name), reply_markup=branches_menu())
+    else:
+        bot.send_message(message.chat.id, MESSAGES["branch_exists"], reply_markup=back_button("admin_branch"))
+        user_states.pop(user_id, None)
+
+@bot.message_handler(func=lambda message: user_states.get(message.from_user.id, {}).get("action") == "editing_branch")
+def process_branch_edit(message):
+    """Filial nomini o'zgartirish"""
+    user_id = message.from_user.id
+    data = user_states.get(user_id, {})
+    old_name = data.get("old_name")
+    new_name = message.text.strip()
+    
+    if not new_name:
+        bot.send_message(message.chat.id, "❌ Filial nomi bo'sh bo'lishi mumkin emas")
+        return
+    
+    db = get_db()
+    if db.update_branch(old_name, new_name):
+        user_states.pop(user_id, None)
+        bot.send_message(message.chat.id, MESSAGES["branch_renamed"].format(new_name), reply_markup=branches_menu())
+    else:
+        bot.send_message(message.chat.id, "❌ Xato yuz berdi", reply_markup=back_button("admin_branch"))
+        user_states.pop(user_id, None)
+
+@bot.message_handler(func=lambda message: user_states.get(message.from_user.id) == "waiting_product_type_name")
+def process_product_type_add(message):
+    """Mahsulot turi nomini saqlash - CALLBACK DAN OLDIN!"""
+    user_id = message.from_user.id
+    name = message.text.strip()
+    
+    logger.info(f"✅ Message keldi: user_id={user_id}, text='{name}', state={user_states.get(user_id)}")
+    
+    # State tekshir
+    if user_states.get(user_id) != "waiting_product_type_name":
+        logger.warning(f"❌ State noto'g'ri: {user_states.get(user_id)}")
+        bot.send_message(message.chat.id, "❌ Avval /start bosing yoki Qo'shish tugmasini bosing")
+        return
+    
+    if not name:
+        logger.warning("❌ Bo'sh nom")
+        bot.send_message(message.chat.id, "❌ Tur nomi bo'sh bo'lishi mumkin emas")
+        return
+    
+    db = get_db()
+    
+    if db.add_product_type(name):
+        user_states.pop(user_id, None)
+        logger.info(f"✅ Tur qo'shildi: {name}")
+        
+        bot.send_message(
+            message.chat.id,
+            f"✅ '{name}' turi qo'shildi!",
+            reply_markup=product_types_menu()
+        )
+    else:
+        logger.warning(f"❌ Tur mavjud: {name}")
+        user_states.pop(user_id, None)
+        
+        bot.send_message(
+            message.chat.id,
+            f"❌ '{name}' turi allaqachon mavjud!",
+            reply_markup=back_button("admin_product")
+        )
+
+@bot.message_handler(func=lambda message: user_states.get(message.from_user.id, {}).get("action") == "editing_product_type")
+def process_product_type_edit(message):
+    """Mahsulot turi nomini o'zgartirish"""
+    user_id = message.from_user.id
+    data = user_states.get(user_id, {})
+    old_name = data.get("old_name")
+    new_name = message.text.strip()
+    
+    if not new_name:
+        bot.send_message(message.chat.id, "❌ Tur nomi bo'sh bo'lishi mumkin emas")
+        return
+    
+    db = get_db()
+    if db.update_product_type(old_name, new_name):
+        user_states.pop(user_id, None)
+        logger.info(f"✅ Tur tahrirlandi: {old_name} -> {new_name}")
+        bot.send_message(message.chat.id, f"✅ '{new_name}' turi saqlandi!", reply_markup=product_types_menu())
+    else:
+        logger.warning(f"❌ Tur tahrirlashda xato: {old_name}")
+        bot.send_message(message.chat.id, "❌ Xato yuz berdi", reply_markup=back_button("admin_product"))
+        user_states.pop(user_id, None)
+
+@bot.message_handler(func=lambda message: user_states.get(message.from_user.id, {}).get("action") == "editing_product")
+def process_product_edit(message):
+    """Mahsulot nomini o'zgartirish"""
+    user_id = message.from_user.id
+    data = user_states.get(user_id, {})
+    old_name = data.get("old_name")
+    new_name = message.text.strip()
+    
+    if not new_name:
+        bot.send_message(message.chat.id, "❌ Mahsulot nomi bo'sh bo'lishi mumkin emas")
+        return
+    
+    db = get_db()
+    db.update_product(old_name, new_name)
+    
+    product_type = data.get("product_type")
+    user_states.pop(user_id, None)
+    
+    logger.info(f"✅ Mahsulot tahrirlandi: {old_name} -> {new_name}")
+    bot.send_message(message.chat.id, MESSAGES["product_added"].format(new_name), reply_markup=products_by_type_menu(product_type))
+
+@bot.message_handler(func=lambda message: user_states.get(message.from_user.id, {}).get("action") == "adding_product")
+def process_product_add_name(message):
+    """Mahsulot nomini qabul qilish"""
+    user_id = message.from_user.id
+    data = user_states.get(user_id, {})
+    product_name = message.text.strip()
+    
+    if not product_name:
+        bot.send_message(message.chat.id, "❌ Mahsulot nomi bo'sh bo'lishi mumkin emas")
+        return
+    
+    data["product_name"] = product_name
+    data["action"] = "adding_product_image"
+    user_states[user_id] = data
+    
+    markup = telebot.types.InlineKeyboardMarkup()
+    markup.add(
+        telebot.types.InlineKeyboardButton("✅ Ha", callback_data="product_add_image_yes"),
+        telebot.types.InlineKeyboardButton("❌ Yo'q", callback_data="product_add_image_no")
+    )
+    
+    bot.send_message(message.chat.id, MESSAGES["product_add_image"], reply_markup=markup)
+
+@bot.message_handler(content_types=['photo'], func=lambda message: user_states.get(message.from_user.id, {}).get("action") == "uploading_product_image")
+def process_product_image(message):
+    """Mahsulot rasmi qabul qilish"""
+    user_id = message.from_user.id
+    data = user_states.get(user_id, {})
+    
+    image_id = message.photo[-1].file_id
+    
+    db = get_db()
+    db.add_product(data.get("product_name"), data.get("product_type"), image_id)
+    
+    product_type = data.get("product_type")
+    user_states.pop(user_id, None)
+    
+    bot.send_message(
+        message.chat.id,
+        MESSAGES["product_added"].format(data.get("product_name")),
+        reply_markup=products_by_type_menu(product_type)
+    )
+
+@bot.message_handler(func=lambda message: user_states.get(message.from_user.id, {}).get("action") == "entering_input_quantity")
+def process_input_quantity(message):
+    """Kiritilish miqdorini qabul qilish"""
+    user_id = message.from_user.id
+    
+    try:
+        quantity = int(message.text)
+        if quantity <= 0:
+            bot.send_message(message.chat.id, MESSAGES["error_invalid_quantity"])
+            return
+        
+        data = user_states.get(user_id, {})
+        product_name = data.get("product_name")
+        branch = data.get("branch")
+        product_type = data.get("product_type")
+        
+        db = get_db()
+        new_qty = db.add_inventory(product_name, branch, quantity)
+        
+        user_states.pop(user_id, None)
+        
+        bot.send_message(
+            message.chat.id,
+            MESSAGES["user_product_added"].format(product_name, quantity, new_qty),
+            reply_markup=products_by_type_menu_user(product_type, "input")
+        )
+    except ValueError:
+        bot.send_message(message.chat.id, MESSAGES["error_invalid_quantity"])
+
+@bot.message_handler(func=lambda message: user_states.get(message.from_user.id, {}).get("action") == "entering_remove_quantity")
+def process_remove_quantity(message):
+    """Chiqarilish miqdorini qabul qilish"""
+    user_id = message.from_user.id
+    
+    try:
+        quantity = int(message.text)
+        if quantity <= 0:
+            bot.send_message(message.chat.id, MESSAGES["error_invalid_quantity"])
+            return
+        
+        data = user_states.get(user_id, {})
+        product_name = data.get("product_name")
+        branch = data.get("branch")
+        product_type = data.get("product_type")
+        
+        db = get_db()
+        new_qty = db.remove_inventory(product_name, branch, quantity)
+        
+        user_states.pop(user_id, None)
+        
+        bot.send_message(
+            message.chat.id,
+            MESSAGES["user_product_removed"].format(product_name, quantity, new_qty),
+            reply_markup=products_by_type_menu_user(product_type, "remove")
+        )
+    except ValueError:
+        bot.send_message(message.chat.id, MESSAGES["error_invalid_quantity"])
+
 # ==================== ADMIN BRANCH HANDLERS ====================
 
 @bot.callback_query_handler(func=lambda call: call.data == "admin_branch")
@@ -84,24 +309,6 @@ def handle_branch_add(call):
         reply_markup=back_button("admin_branch")
     )
     user_states[call.from_user.id] = "waiting_branch_name"
-
-@bot.message_handler(func=lambda message: user_states.get(message.from_user.id) == "waiting_branch_name")
-def process_branch_add(message):
-    """Filial nomini saqlash"""
-    db = get_db()
-    name = message.text.strip()
-    user_id = message.from_user.id
-    
-    if not name:
-        bot.send_message(message.chat.id, "❌ Filial nomi bo'sh bo'lishi mumkin emas")
-        return
-    
-    if db.add_branch(name):
-        user_states.pop(user_id, None)
-        bot.send_message(message.chat.id, MESSAGES["branch_added"].format(name), reply_markup=branches_menu())
-    else:
-        bot.send_message(message.chat.id, MESSAGES["branch_exists"], reply_markup=back_button("admin_branch"))
-        user_states.pop(user_id, None)
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("branch_select:"))
 def handle_branch_select(call):
@@ -136,26 +343,6 @@ def handle_branch_edit(call):
         reply_markup=back_button("admin_branch")
     )
 
-@bot.message_handler(func=lambda message: user_states.get(message.from_user.id, {}).get("action") == "editing_branch")
-def process_branch_edit(message):
-    """Filial nomini o'zgartirish"""
-    user_id = message.from_user.id
-    data = user_states.get(user_id, {})
-    old_name = data.get("old_name")
-    new_name = message.text.strip()
-    
-    if not new_name:
-        bot.send_message(message.chat.id, "❌ Filial nomi bo'sh bo'lishi mumkin emas")
-        return
-    
-    db = get_db()
-    if db.update_branch(old_name, new_name):
-        user_states.pop(user_id, None)
-        bot.send_message(message.chat.id, MESSAGES["branch_renamed"].format(new_name), reply_markup=branches_menu())
-    else:
-        bot.send_message(message.chat.id, "❌ Xato yuz berdi", reply_markup=back_button("admin_branch"))
-        user_states.pop(user_id, None)
-
 @bot.callback_query_handler(func=lambda call: call.data.startswith("branch_delete:"))
 def handle_branch_delete(call):
     """Filial o'chirish"""
@@ -186,6 +373,23 @@ def handle_admin_product(call):
         reply_markup=product_types_menu()
     )
 
+@bot.callback_query_handler(func=lambda call: call.data == "product_type_add")
+def handle_product_type_add(call):
+    """Yangi mahsulot turi qo'shish"""
+    user_id = call.from_user.id
+    
+    # State belgilash AVVAL
+    user_states[user_id] = "waiting_product_type_name"
+    
+    logger.info(f"User {user_id} tur qo'shish boshladi. State: {user_states[user_id]}")
+    
+    # Xabar yuborish
+    bot.send_message(
+        call.message.chat.id,
+        "✍️ Mahsulot turi (brend) nomini kiriting:",
+        reply_markup=back_button("admin_product")
+    )
+
 @bot.callback_query_handler(func=lambda call: call.data.startswith("product_type_select:"))
 def handle_product_type_select(call):
     """Mahsulot turini tanlash"""
@@ -201,80 +405,6 @@ def handle_product_type_select(call):
         parse_mode="HTML"
     )
 
-@bot.callback_query_handler(func=lambda call: call.data == "product_type_add")
-def handle_product_type_add(call):
-    """Yangi mahsulot turi qo'shish"""
-    user_id = call.from_user.id
-    
-    # Avval xabarni o'chirish
-    try:
-        bot.delete_message(call.message.chat.id, call.message.message_id)
-    except:
-        pass
-    
-    # State belgilash
-    user_states[user_id] = "waiting_product_type_name"
-    
-    logger.info(f"User {user_id} tur qo'shish boshladi. State: {user_states[user_id]}")
-    
-    # Xabar yuborish
-    bot.send_message(
-        call.message.chat.id,
-        "✍️ Mahsulot turi (brend) nomini kiriting:",
-        reply_markup=back_button("admin_product")
-    )
-
-@bot.message_handler(func=lambda message: user_states.get(message.from_user.id) == "waiting_product_type_name")
-def process_product_type_add(message):
-    """Mahsulot turi nomini saqlash"""
-    user_id = message.from_user.id
-    name = message.text.strip()
-    
-    logger.info(f"✅ Message keldi: user_id={user_id}, text='{name}', state={user_states.get(user_id)}")
-    
-    # State tekshir
-    if user_states.get(user_id) != "waiting_product_type_name":
-        logger.warning(f"❌ State noto'g'ri: {user_states.get(user_id)}")
-        return
-    
-    if not name:
-        logger.warning("❌ Bo'sh nom")
-        bot.send_message(message.chat.id, "❌ Tur nomi bo'sh bo'lishi mumkin emas")
-        return
-    
-    db = get_db()
-    
-    if db.add_product_type(name):
-        user_states.pop(user_id, None)
-        logger.info(f"✅ Tur qo'shildi: {name}")
-        
-        # Xabani o'chir va yangi xabar yuborish
-        try:
-            bot.delete_message(message.chat.id, message.message_id)
-        except:
-            pass
-        
-        bot.send_message(
-            message.chat.id,
-            f"✅ '{name}' turi qo'shildi!",
-            reply_markup=product_types_menu()
-        )
-    else:
-        logger.warning(f"❌ Tur mavjud: {name}")
-        user_states.pop(user_id, None)
-        
-        # Xabani o'chir va yangi xabar yuborish
-        try:
-            bot.delete_message(message.chat.id, message.message_id)
-        except:
-            pass
-        
-        bot.send_message(
-            message.chat.id,
-            f"❌ '{name}' turi allaqachon mavjud!",
-            reply_markup=back_button("admin_product")
-        )
-
 @bot.callback_query_handler(func=lambda call: call.data.startswith("product_type_edit:"))
 def handle_product_type_edit(call):
     """Mahsulot turini tahrirlash"""
@@ -288,32 +418,14 @@ def handle_product_type_edit(call):
         reply_markup=back_button("admin_product")
     )
 
-@bot.message_handler(func=lambda message: user_states.get(message.from_user.id, {}).get("action") == "editing_product_type")
-def process_product_type_edit(message):
-    """Mahsulot turi nomini o'zgartirish"""
-    user_id = message.from_user.id
-    data = user_states.get(user_id, {})
-    old_name = data.get("old_name")
-    new_name = message.text.strip()
-    
-    if not new_name:
-        bot.send_message(message.chat.id, "❌ Tur nomi bo'sh bo'lishi mumkin emas")
-        return
-    
-    db = get_db()
-    if db.update_product_type(old_name, new_name):
-        user_states.pop(user_id, None)
-        bot.send_message(message.chat.id, f"✅ '{new_name}' turi saqlandi!", reply_markup=product_types_menu())
-    else:
-        bot.send_message(message.chat.id, "❌ Xato yuz berdi", reply_markup=back_button("admin_product"))
-        user_states.pop(user_id, None)
-
 @bot.callback_query_handler(func=lambda call: call.data.startswith("product_type_delete:"))
 def handle_product_type_delete(call):
     """Mahsulot turini o'chirish"""
     product_type = call.data.split(":")[1]
     db = get_db()
     db.delete_product_type(product_type)
+    
+    logger.info(f"✅ Tur o'chirildi: {product_type}")
     
     bot.edit_message_text(
         f"🗑️ '{product_type}' turi o'chirildi",
@@ -336,6 +448,7 @@ def handle_product_type_actions(call):
         reply_markup=product_type_actions_menu(product_type),
         parse_mode="HTML"
     )
+
 # ==================== ADMIN PRODUCT HANDLERS ====================
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("product_select:"))
@@ -386,26 +499,6 @@ def handle_product_edit(call):
         reply_markup=back_button("product_type_back")
     )
 
-@bot.message_handler(func=lambda message: user_states.get(message.from_user.id, {}).get("action") == "editing_product")
-def process_product_edit(message):
-    """Mahsulot nomini o'zgartirish"""
-    user_id = message.from_user.id
-    data = user_states.get(user_id, {})
-    old_name = data.get("old_name")
-    new_name = message.text.strip()
-    
-    if not new_name:
-        bot.send_message(message.chat.id, "❌ Mahsulot nomi bo'sh bo'lishi mumkin emas")
-        return
-    
-    db = get_db()
-    db.update_product(old_name, new_name)
-    
-    product_type = data.get("product_type")
-    user_states.pop(user_id, None)
-    
-    bot.send_message(message.chat.id, MESSAGES["product_added"].format(new_name), reply_markup=products_by_type_menu(product_type))
-
 @bot.callback_query_handler(func=lambda call: call.data.startswith("product_delete:"))
 def handle_product_delete(call):
     """Mahsulot o'chirish"""
@@ -438,29 +531,6 @@ def handle_product_add(call):
         reply_markup=back_button("product_type_back")
     )
 
-@bot.message_handler(func=lambda message: user_states.get(message.from_user.id, {}).get("action") == "adding_product")
-def process_product_add_name(message):
-    """Mahsulot nomini qabul qilish"""
-    user_id = message.from_user.id
-    data = user_states.get(user_id, {})
-    product_name = message.text.strip()
-    
-    if not product_name:
-        bot.send_message(message.chat.id, "❌ Mahsulot nomi bo'sh bo'lishi mumkin emas")
-        return
-    
-    data["product_name"] = product_name
-    data["action"] = "adding_product_image"
-    user_states[user_id] = data
-    
-    markup = telebot.types.InlineKeyboardMarkup()
-    markup.add(
-        telebot.types.InlineKeyboardButton("✅ Ha", callback_data="product_add_image_yes"),
-        telebot.types.InlineKeyboardButton("❌ Yo'q", callback_data="product_add_image_no")
-    )
-    
-    bot.send_message(message.chat.id, MESSAGES["product_add_image"], reply_markup=markup)
-
 @bot.callback_query_handler(func=lambda call: call.data == "product_add_image_yes")
 def handle_product_image_yes(call):
     """Rasm yuklash kerak"""
@@ -489,26 +559,6 @@ def handle_product_image_no(call):
         MESSAGES["product_added"].format(data.get("product_name")),
         call.message.chat.id,
         call.message.message_id,
-        reply_markup=products_by_type_menu(product_type)
-    )
-
-@bot.message_handler(content_types=['photo'], func=lambda message: user_states.get(message.from_user.id, {}).get("action") == "uploading_product_image")
-def process_product_image(message):
-    """Mahsulot rasmi qabul qilish"""
-    user_id = message.from_user.id
-    data = user_states.get(user_id, {})
-    
-    image_id = message.photo[-1].file_id
-    
-    db = get_db()
-    db.add_product(data.get("product_name"), data.get("product_type"), image_id)
-    
-    product_type = data.get("product_type")
-    user_states.pop(user_id, None)
-    
-    bot.send_message(
-        message.chat.id,
-        MESSAGES["product_added"].format(data.get("product_name")),
         reply_markup=products_by_type_menu(product_type)
     )
 
@@ -653,35 +703,6 @@ def handle_user_input_branch(call):
         reply_markup=back_button("user_input_back")
     )
 
-@bot.message_handler(func=lambda message: user_states.get(message.from_user.id, {}).get("action") == "entering_input_quantity")
-def process_input_quantity(message):
-    """Kiritilish miqdorini qabul qilish"""
-    user_id = message.from_user.id
-    
-    try:
-        quantity = int(message.text)
-        if quantity <= 0:
-            bot.send_message(message.chat.id, MESSAGES["error_invalid_quantity"])
-            return
-        
-        data = user_states.get(user_id, {})
-        product_name = data.get("product_name")
-        branch = data.get("branch")
-        product_type = data.get("product_type")
-        
-        db = get_db()
-        new_qty = db.add_inventory(product_name, branch, quantity)
-        
-        user_states.pop(user_id, None)
-        
-        bot.send_message(
-            message.chat.id,
-            MESSAGES["user_product_added"].format(product_name, quantity, new_qty),
-            reply_markup=products_by_type_menu_user(product_type, "input")
-        )
-    except ValueError:
-        bot.send_message(message.chat.id, MESSAGES["error_invalid_quantity"])
-
 # ==================== USER REMOVE HANDLERS ====================
 
 @bot.callback_query_handler(func=lambda call: call.data == "user_remove")
@@ -773,35 +794,6 @@ def handle_user_remove_branch(call):
         parse_mode="HTML",
         reply_markup=back_button("user_remove_back")
     )
-
-@bot.message_handler(func=lambda message: user_states.get(message.from_user.id, {}).get("action") == "entering_remove_quantity")
-def process_remove_quantity(message):
-    """Chiqarilish miqdorini qabul qilish"""
-    user_id = message.from_user.id
-    
-    try:
-        quantity = int(message.text)
-        if quantity <= 0:
-            bot.send_message(message.chat.id, MESSAGES["error_invalid_quantity"])
-            return
-        
-        data = user_states.get(user_id, {})
-        product_name = data.get("product_name")
-        branch = data.get("branch")
-        product_type = data.get("product_type")
-        
-        db = get_db()
-        new_qty = db.remove_inventory(product_name, branch, quantity)
-        
-        user_states.pop(user_id, None)
-        
-        bot.send_message(
-            message.chat.id,
-            MESSAGES["user_product_removed"].format(product_name, quantity, new_qty),
-            reply_markup=products_by_type_menu_user(product_type, "remove")
-        )
-    except ValueError:
-        bot.send_message(message.chat.id, MESSAGES["error_invalid_quantity"])
 
 # ==================== USER LIST HANDLERS ====================
 
