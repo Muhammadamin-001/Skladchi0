@@ -869,6 +869,7 @@ def handle_user_remove_branch(call):
     """Chiqarish filiali tanlandi"""
     branch = call.data.split(":")[1]
     user_id = call.from_user.id
+    bot.delete_message(call.message.chat.id, call.message.message_id)
     
     data = get_user_state_data(user_id)
     data["action"] = "entering_remove_quantity"
@@ -880,10 +881,9 @@ def handle_user_remove_branch(call):
     inventory = db.get_total_inventory_by_product(product_name)
     current_qty = inventory.get("quantity", 0)
     
-    bot.edit_message_text(
+    bot.send_message(
         f"📦 <b>{product_name}</b>\n🏢 Yuboriladigan filial: <b>{branch}</b>\n📊 Skladdagi qoldiq: <b>{current_qty}</b> \n\n{MESSAGES['user_enter_quantity']}",
         call.message.chat.id,
-        call.message.message_id,
         parse_mode="HTML",
         reply_markup=back_button("user_remove_products_back")
     )
