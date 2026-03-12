@@ -230,3 +230,48 @@ def list_products_by_type_menu(product_type):
 
     markup.add(telebot.types.InlineKeyboardButton(MESSAGES["button_back"], callback_data="user_list"))
     return markup
+
+
+def admin_list_types_menu():
+    """Admin ro'yxati uchun mahsulot turlari"""
+    db = get_db()
+    types = db.get_all_product_types()
+    markup = telebot.types.InlineKeyboardMarkup()
+
+    for i in range(0, len(types), 2):
+        row = []
+        for j in range(2):
+            if i + j < len(types):
+                ptype = types[i + j]
+                row.append(telebot.types.InlineKeyboardButton(
+                    text=ptype["name"],
+                    callback_data=f"admin_list_type:{ptype['name']}"
+                ))
+        if row:
+            markup.add(*row)
+
+    markup.add(telebot.types.InlineKeyboardButton(MESSAGES["button_back"], callback_data="admin_back"))
+    return markup
+
+
+def admin_list_products_by_type_menu(product_type):
+    """Admin ro'yxati uchun mahsulotlar (type bo'yicha)"""
+    db = get_db()
+    products = db.get_products_by_type(product_type)
+    markup = telebot.types.InlineKeyboardMarkup()
+
+    for i in range(0, len(products), 2):
+        row = []
+        for j in range(2):
+            if i + j < len(products):
+                product = products[i + j]
+                row.append(telebot.types.InlineKeyboardButton(
+                    text=product["name"],
+                    callback_data=f"admin_list_product:{product['name']}"
+                ))
+        if row:
+            markup.add(*row)
+
+    markup.add(telebot.types.InlineKeyboardButton(MESSAGES["button_back"], callback_data="admin_list_types_back"))
+    return markup
+

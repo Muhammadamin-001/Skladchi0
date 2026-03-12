@@ -18,7 +18,9 @@ from keyboards.telebot_keyboards import (
     products_by_type_menu_user,
     branches_menu_user,
     list_branches_menu,
-    list_products_by_type_menu
+    list_products_by_type_menu,
+    admin_list_types_menu,
+    admin_list_products_by_type_menu
 )
 
 logging.basicConfig(
@@ -653,46 +655,65 @@ def handle_admin_list(call):
     user_id = call.from_user.id
     user_states.pop(user_id, None)
     
-    db = get_db()
-    branches = db.get_all_branches()
-    
-    markup = telebot.types.InlineKeyboardMarkup()
-    for branch in branches:
-        markup.add(telebot.types.InlineKeyboardButton(
-            text=branch["name"],
-            callback_data=f"admin_list_branch:{branch['name']}"
-        ))
-    markup.add(telebot.types.InlineKeyboardButton(MESSAGES["button_back"], callback_data="admin_back"))
     
     bot.edit_message_text(
-        "📋 Filial tanlang:",
+        "📋 Ro'yxat\n\nMahsulot turini tanlang:",
         call.message.chat.id,
         call.message.message_id,
-        reply_markup=markup
+        reply_markup=admin_list_types_menu()
     )
 
-@bot.callback_query_handler(func=lambda call: call.data.startswith("admin_list_branch:"))
-def handle_admin_list_branch(call):
-    """Admin filial ro'yxati"""
-    branch = call.data.split(":")[1]
-    
-    db = get_db()
-    inventory = db.get_inventory_by_branch(branch)
-    
-    text = f"📋 <b>{branch}</b> - Mahsulotlar Ro'yxati\n\n"
-    
-    if not inventory:
-        text = f"📋 <b>{branch}</b> - Mahsulotlar Yo'q"
-    else:
-        for idx, item in enumerate(inventory, 1):
-            quantity = item.get("quantity", 0)
-            text += f"{idx}. {item['product_name']}: <b>{quantity}</b> dona\n"
+@bot.callback_query_handler(func=lambda call: call.data.startswith("admin_list_type:"))
+def handle_admin_list_type(call):
+    """Admin ro'yxat uchun mahsulot turini tanlash"""
+    if call.from_user.id != ADMIN_ID:
+        bot.answer_callback_query(call.id, MESSAGES["error_access_denied"], show_alert=True)
+        return
+
+    product_type = call.data.split(":", 1)[1]
+
+    user_states[call.from_user.id] = {"action": "admin_listing_products", "product_type": product_type}
     
     bot.edit_message_text(
-        text,
+        f"📋 {product_type} turidagi mahsulotlar:\n\nMahsulotni tanlang:",
         call.message.chat.id,
         call.message.message_id,
-        reply_markup=back_button("admin_list"),
+        reply_markup=admin_list_products_by_type_menu(product_type),
+        parse_mode="HTML"
+    )
+
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith("admin_list_product:"))
+def handle_admin_list_product(call):
+    """Admin uchun tanlangan mahsulot qoldig'ini yuborish"""
+    if call.from_user.id != ADMIN_ID:
+        bot.answer_callback_query(call.id, MESSAGES["error_access_denied"], show_alert=True)
+        return
+
+    product_name = call.data.split(":", 1)[1]
+
+    db = get_db()
+    inventory = db.get_total_inventory_by_product(product_name)
+    quantity = inventory.get("quantity", 0)
+    product = db.get_product_by_name(product_name)
+
+    text = f"📦 <b>{product_name}</b>\n📊 Skladda qoldi: <b>{quantity}</b> dona"
+
+    if product and product.get("image_id"):
+        try:
+            bot.send_photo(
+                call.message.chat.id,
+                product["image_id"],
+                caption=text,
+                parse_mode="HTML"
+            )
+            return
+        except Exception as e:
+            logger.warning(f"⚠️ Admin ro'yxatida rasm yuborishda xato: {e}")
+
+    bot.send_message(
+        call.message.chat.id,
+        text,
         parse_mode="HTML"
     )
 
@@ -708,6 +729,7 @@ def handle_user_input(call):
         f"📦 Mahsulot Kiritamiz\n\nMahsulot turini tanlang:\n(Barcha kiritishlar <b>{WAREHOUSE_NAME}</b> ga qo'shiladi)",
         call.message.chat.id,
         call.message.message_id,
+        parse_mode="HTML",
         reply_markup=product_types_menu_user("input")
     )
 
@@ -1126,7 +1148,27 @@ def handle_user_list_back(call):
         call.message.message_id,
         reply_markup=list_branches_menu()
     )
-    
+
+@bot.callback_query_handler(func=lambda call: call.data == "admin_list_types_back")
+def handle_admin_list_types_back(call):
+    """Admin ro'yxatdagi mahsulotlar ro'yxatidan turlarga qaytish"""
+    if call.from_user.id != ADMIN_ID:
+        bot.answer_callback_query(call.id, MESSAGES["error_access_denied"], show_alert=True)
+        return
+
+    user_states.pop(call.from_user.id, None)
+
+    try:
+        bot.delete_message(call.message.chat.id, call.message.message_id)
+    except Exception:
+        pass
+
+    bot.send_message(
+        call.message.chat.id,
+        "📋 Ro'yxat\n\nMahsulot turini tanlang:",
+        reply_markup=admin_list_types_menu()
+    )
+
 @bot.callback_query_handler(func=lambda call: call.data == "user_list_products_back")
 def handle_user_list_products_back(call):
     """Mahsulot qoldig'idan mahsulotlar ro'yxatiga qaytish"""
