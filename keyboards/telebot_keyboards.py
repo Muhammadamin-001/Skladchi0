@@ -38,7 +38,7 @@ def back_button(callback_data="back"):
     return markup
 
 def product_types_menu():
-    """Mahsulot turlari menyu - 2 qatordan"""
+    """Mahsulot turlari menyu - 2 qatordan + sozlash tugmasi"""
     db = get_db()
     types = db.get_all_product_types()
     markup = telebot.types.InlineKeyboardMarkup()
@@ -48,18 +48,18 @@ def product_types_menu():
         markup.add(telebot.types.InlineKeyboardButton(MESSAGES["button_back"], callback_data="admin_back"))
         return markup
     
-    # 2 qatordan qo'shish
-    for i in range(0, len(types), 2):
+    # 2 qatordan qo'shish + sozlash tugmasi
+    for ptype in types:
         row = []
-        for j in range(2):
-            if i + j < len(types):
-                ptype = types[i + j]
-                row.append(telebot.types.InlineKeyboardButton(
-                    text=ptype["name"],
-                    callback_data=f"product_type_select:{ptype['name']}"
-                ))
-        if row:
-            markup.add(*row)
+        row.append(telebot.types.InlineKeyboardButton(
+            text=ptype["name"],
+            callback_data=f"product_type_select:{ptype['name']}"
+        ))
+        row.append(telebot.types.InlineKeyboardButton(
+            text="⚙️",
+            callback_data=f"product_type_actions:{ptype['name']}"
+        ))
+        markup.add(*row)
     
     markup.add(telebot.types.InlineKeyboardButton(MESSAGES["button_add"], callback_data="product_type_add"))
     markup.add(telebot.types.InlineKeyboardButton(MESSAGES["button_back"], callback_data="admin_back"))
@@ -67,11 +67,11 @@ def product_types_menu():
     return markup
 
 def product_type_actions_menu(product_type):
-    """Mahsulot turi faoliyatlari"""
+    """Mahsulot turi faoliyatlari - tahrirlash va o'chirish"""
     markup = telebot.types.InlineKeyboardMarkup()
     markup.add(
-        telebot.types.InlineKeyboardButton(MESSAGES["button_edit"], callback_data=f"product_type_edit:{product_type}"),
-        telebot.types.InlineKeyboardButton(MESSAGES["button_delete"], callback_data=f"product_type_delete:{product_type}")
+        telebot.types.InlineKeyboardButton("✏️ Tahrirlash", callback_data=f"product_type_edit:{product_type}"),
+        telebot.types.InlineKeyboardButton("🗑️ O'chirish", callback_data=f"product_type_delete:{product_type}")
     )
     markup.add(telebot.types.InlineKeyboardButton(MESSAGES["button_back"], callback_data="product_type_back"))
     return markup
