@@ -274,7 +274,11 @@ def process_product_edit(message):
     db = get_db()
     db.update_product(old_name, new_name)
     
-    bot.send_message(message.chat.id, MESSAGES["product_added"].format(new_name))
+    user_id = message.from_user.id
+    data = user_states.get(user_id, {})
+    branch = data.get("branch")
+    
+    bot.send_message(message.chat.id, MESSAGES["product_added"].format(new_name), reply_markup=products_menu(branch))
     user_states.pop(user_id, None)
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("product_delete:"))

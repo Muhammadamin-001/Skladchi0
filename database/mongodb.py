@@ -75,10 +75,6 @@ class MongoDBManager:
     def reject_user(self, user_id):
         self.db["users"].delete_one({"user_id": user_id})
 
-    def is_user_approved(self, user_id):
-        user = self.get_user(user_id)
-        return user and user.get("approved", False)
-
     # ==================== FILIALLAR ====================
     
     def add_branch(self, name):
@@ -131,17 +127,16 @@ class MongoDBManager:
     def get_product_by_name(self, name):
         return self.db["products"].find_one({"name": name})
 
-    def update_product(self, name, new_name=None, new_image_id=None):
+    def update_product(self, name, new_name=None):
         update_data = {}
         if new_name:
             update_data["name"] = new_name
-        if new_image_id:
-            update_data["image_id"] = new_image_id
         
-        self.db["products"].update_one(
-            {"name": name},
-            {"$set": update_data}
-        )
+        if update_data:
+            self.db["products"].update_one(
+                {"name": name},
+                {"$set": update_data}
+            )
 
     def delete_product(self, name):
         self.db["products"].delete_one({"name": name})
@@ -198,15 +193,6 @@ class MongoDBManager:
             return True
         except DuplicateKeyError:
             return False
-
-    def get_pending_requests(self):
-        return list(self.db["requests"].find({"status": "pending"}))
-
-    def complete_request(self, user_id):
-        self.db["requests"].update_one(
-            {"user_id": user_id},
-            {"$set": {"status": "completed"}}
-        )
 
     def delete_request(self, user_id):
         self.db["requests"].delete_one({"user_id": user_id})

@@ -1,4 +1,4 @@
 """Config moduli"""
-from .settings import *
+from .settings import BOT_TOKEN, ADMIN_ID, MONGO_URI, DB_NAME, MESSAGES
 
-__all__ = ["BOT_TOKEN", "ADMIN_ID", "MESSAGES", "ITEMS_PER_PAGE", "MONGO_URI"]
+__all__ = ["BOT_TOKEN", "ADMIN_ID", "MONGO_URI", "DB_NAME", "MESSAGES"]
