@@ -148,14 +148,16 @@ def product_types_menu_user(action="input"):
     return markup
 
 # ✅ USER PRODUCTS BY TYPE MENU - YANGI!
-def products_by_type_menu_user(product_type, action="input"):
+def products_by_type_menu_user(product_type, action="input", back_callback=None):
     """Foydalanuvchi uchun mahsulot turiga ko'ra mahsulotlar"""
     db = get_db()
     products = db.get_products_by_type(product_type)  # ✅ PRODUCT_TYPE BO'YICHA
     markup = telebot.types.InlineKeyboardMarkup()
     
+    back_data = back_callback or f"user_{action}_back"
+
     if not products:
-        markup.add(telebot.types.InlineKeyboardButton(MESSAGES["button_back"], callback_data=f"user_{action}_back"))
+        markup.add(telebot.types.InlineKeyboardButton(MESSAGES["button_back"], callback_data=back_data))
         return markup
     
     # 2 qatordan
@@ -171,10 +173,10 @@ def products_by_type_menu_user(product_type, action="input"):
         if row:
             markup.add(*row)
     
-    markup.add(telebot.types.InlineKeyboardButton(MESSAGES["button_back"], callback_data=f"user_{action}_back"))
+    markup.add(telebot.types.InlineKeyboardButton(MESSAGES["button_back"], callback_data=back_data))
     return markup
 
-def branches_menu_user(action="input"):
+def branches_menu_user(action="input", back_callback=None):
     """Foydalanuvchi uchun filiallar"""
     db = get_db()
     branches = db.get_all_branches()
@@ -185,11 +187,13 @@ def branches_menu_user(action="input"):
             text=branch["name"],
             callback_data=f"user_{action}_branch:{branch['name']}"
         ))
+        
+    back_data = back_callback or f"user_{action}_back"
     
     markup.add(
        telebot.types.InlineKeyboardButton(
            MESSAGES["button_back"],
-           callback_data=f"user_{action}_back"
+           callback_data=back_data
        )
    )
     return markup

@@ -289,7 +289,7 @@ def process_input_quantity(message):
         bot.send_message(
             message.chat.id,
             MESSAGES["user_product_added"].format(product_name, quantity, new_qty),
-            reply_markup=products_by_type_menu_user(product_type, "input")
+            reply_markup=products_by_type_menu_user(product_type, "input", back_callback="user_input_types_back")
         )
     except ValueError:
         bot.send_message(message.chat.id, MESSAGES["error_invalid_quantity"])
@@ -325,7 +325,7 @@ def process_remove_quantity(message):
         bot.send_message(
             message.chat.id,
             MESSAGES["user_product_removed"].format(product_name, branch, quantity, new_qty),
-            reply_markup=products_by_type_menu_user(product_type, "remove")
+            reply_markup=products_by_type_menu_user(product_type, "remove", back_callback="user_remove_types_back")
         )
     except ValueError:
         bot.send_message(message.chat.id, MESSAGES["error_invalid_quantity"])
@@ -745,7 +745,7 @@ def handle_user_input_type(call):
         f"📦 {product_type} - Mahsulotlarni tanlang:",
         call.message.chat.id,
         call.message.message_id,
-        reply_markup=products_by_type_menu_user(product_type, "input"),
+        reply_markup=products_by_type_menu_user(product_type, "input", back_callback="user_input_types_back"),
         parse_mode="HTML"
     )
 
@@ -819,7 +819,7 @@ def handle_user_remove_type(call):
         f"📦 {product_type} - Mahsulotlarni tanlang:",
         call.message.chat.id,
         call.message.message_id,
-        reply_markup=products_by_type_menu_user(product_type, "remove"),
+        reply_markup=products_by_type_menu_user(product_type, "remove", back_callback="user_remove_types_back"),
         parse_mode="HTML"
     )
 
@@ -846,7 +846,7 @@ def handle_user_remove_product(call):
                 call.message.chat.id,
                 product["image_id"],
                 caption=text,
-                reply_markup=branches_menu_user("remove"),
+                reply_markup=branches_menu_user("remove", back_callback="user_remove_products_back"),
                 parse_mode="HTML"
             )
         except:
@@ -854,14 +854,14 @@ def handle_user_remove_product(call):
                 call.message.chat.id,
                 text,
                 parse_mode="HTML",
-                reply_markup=branches_menu_user("remove")
+                reply_markup=branches_menu_user("remove", back_callback="user_remove_products_back")
             )
     else:
         bot.send_message(
             call.message.chat.id,
             text,
             parse_mode="HTML",
-            reply_markup=branches_menu_user("remove")
+            reply_markup=branches_menu_user("remove", back_callback="user_remove_products_back")
         )
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("user_remove_branch:"))
@@ -880,11 +880,12 @@ def handle_user_remove_branch(call):
     inventory = db.get_total_inventory_by_product(product_name)
     current_qty = inventory.get("quantity", 0)
     
-    bot.send_message(
-        call.message.chat.id,
+    bot.edit_message_text(
         f"📦 <b>{product_name}</b>\n🏢 Yuboriladigan filial: <b>{branch}</b>\n📊 Skladdagi qoldiq: <b>{current_qty}</b> \n\n{MESSAGES['user_enter_quantity']}",
+        call.message.chat.id,
+        call.message.message_id,
         parse_mode="HTML",
-        reply_markup=back_button("user_remove_back")
+        reply_markup=back_button("user_remove_products_back")
     )
 
 # ==================== USER LIST CALLBACKS ====================
@@ -1078,6 +1079,56 @@ def handle_product_type_back(call):
         reply_markup=product_types_menu()
     )
 
+
+@bot.callback_query_handler(func=lambda call: call.data == "user_input_types_back")
+def handle_user_input_types_back(call):
+    """Kiritishda mahsulot turi tanlash sahifasiga qaytish"""
+    user_id = call.from_user.id
+    user_states.pop(user_id, None)
+
+    bot.edit_message_text(
+        f"📦 Mahsulot Kiritamiz\n\nMahsulot turini tanlang:\n(Barcha kiritishlar <b>{WAREHOUSE_NAME}</b> ga qo'shiladi)",
+        call.message.chat.id,
+        call.message.message_id,
+        parse_mode="HTML",
+        reply_markup=product_types_menu_user("input")
+    )
+
+@bot.callback_query_handler(func=lambda call: call.data == "user_remove_products_back")
+def handle_user_remove_products_back(call):
+    """Chiqarishda filial tanlashdan mahsulotlar ro'yxatiga qaytish"""
+    user_id = call.from_user.id
+    data = get_user_state_data(user_id)
+    product_type = data.get("product_type")
+
+    if product_type:
+        data["action"] = "selecting_remove_product"
+        data.pop("branch", None)
+        user_states[user_id] = data
+
+        bot.edit_message_text(
+            f"📦 {product_type} - Mahsulotlarni tanlang:",
+            call.message.chat.id,
+            call.message.message_id,
+            reply_markup=products_by_type_menu_user(product_type, "remove", back_callback="user_remove_types_back"),
+            parse_mode="HTML"
+        )
+
+@bot.callback_query_handler(func=lambda call: call.data == "user_remove_types_back")
+def handle_user_remove_types_back(call):
+    """Chiqarishda mahsulot turlari sahifasiga qaytish"""
+    user_id = call.from_user.id
+    user_states.pop(user_id, None)
+
+    bot.edit_message_text(
+        "📦 Mahsulot Chiqaramiz\n\nMahsulot turini tanlang:",
+        call.message.chat.id,
+        call.message.message_id,
+        reply_markup=product_types_menu_user("remove")
+    )
+
+
+
 @bot.callback_query_handler(func=lambda call: call.data == "user_input_back")
 def handle_user_input_back(call):
     """Kiritishdan orqaga"""
@@ -1092,7 +1143,7 @@ def handle_user_input_back(call):
                f"📦 {product_type} - Mahsulotlarni tanlang:",
                call.message.chat.id,
                call.message.message_id,
-               reply_markup=products_by_type_menu_user(product_type, "input"),
+               reply_markup=products_by_type_menu_user(product_type, "input", back_callback="user_input_types_back"),
                parse_mode="HTML"
            )
         except Exception:
@@ -1103,7 +1154,7 @@ def handle_user_input_back(call):
            bot.send_message(
                call.message.chat.id,
                f"📦 {product_type} - Mahsulotlarni tanlang:",
-               reply_markup=products_by_type_menu_user(product_type, "input"),
+               reply_markup=products_by_type_menu_user(product_type, "input", back_callback="user_input_types_back"),
                parse_mode="HTML"
            )
 
@@ -1121,7 +1172,7 @@ def handle_user_remove_back(call):
                 f"📦 {product_type} - Mahsulotlarni tanlang:",
                 call.message.chat.id,
                 call.message.message_id,
-                reply_markup=products_by_type_menu_user(product_type, "remove"),
+                reply_markup=products_by_type_menu_user(product_type, "remove", back_callback="user_remove_types_back"),
                 parse_mode="HTML"
             )
         except Exception:
@@ -1132,7 +1183,7 @@ def handle_user_remove_back(call):
             bot.send_message(
                 call.message.chat.id,
                 f"📦 {product_type} - Mahsulotlarni tanlang:",
-                reply_markup=products_by_type_menu_user(product_type, "remove"),
+                reply_markup=products_by_type_menu_user(product_type, "remove", back_callback="user_remove_types_back"),
                 parse_mode="HTML"
             )
 
