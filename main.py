@@ -828,6 +828,7 @@ def handle_user_remove_product(call):
     """Mahsulot tanlash"""
     product_name = call.data.split(":")[1]
     user_id = call.from_user.id
+    bot.delete_message(call.message.chat.id, call.message.message_id)
     
     data = get_user_state_data(user_id)
     data["action"] = "selecting_remove_branch"
@@ -841,7 +842,7 @@ def handle_user_remove_product(call):
     
     if product and product.get("image_id"):
         try:
-            bot.delete_message(call.message.chat.id, call.message.message_id)
+            
             bot.send_photo(
                 call.message.chat.id,
                 product["image_id"],
