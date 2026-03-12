@@ -882,8 +882,8 @@ def handle_user_remove_branch(call):
     current_qty = inventory.get("quantity", 0)
     
     bot.send_message(
-        f"📦 <b>{product_name}</b>\n🏢 Yuboriladigan filial: <b>{branch}</b>\n📊 Skladdagi qoldiq: <b>{current_qty}</b> \n\n{MESSAGES['user_enter_quantity']}",
         call.message.chat.id,
+        f"📦 <b>{product_name}</b>\n🏢 Yuboriladigan filial: <b>{branch}</b>\n📊 Skladdagi qoldiq: <b>{current_qty}</b> \n\n{MESSAGES['user_enter_quantity']}",
         parse_mode="HTML",
         reply_markup=back_button("user_remove_products_back")
     )
