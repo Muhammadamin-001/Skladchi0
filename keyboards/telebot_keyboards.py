@@ -38,7 +38,7 @@ def back_button(callback_data="back"):
     return markup
 
 def product_type_menu():
-    """Mahsulot turi"""
+    """Mahsulot turi - TUZATILDI"""
     markup = telebot.types.InlineKeyboardMarkup()
     markup.add(
         telebot.types.InlineKeyboardButton("🌍 Umumiy", callback_data="product_common"),
@@ -63,10 +63,21 @@ def branches_for_products_menu():
     return markup
 
 def products_menu(branch=None):
-    """Mahsulotlar ro'yxati - 2 qatordan"""
+    """Mahsulotlar ro'yxati - 2 qatordan
+    
+    Args:
+        branch: Filial nomi yoki None (umumiy uchun)
+    """
     db = get_db()
     products = db.get_products_by_branch(branch)
     markup = telebot.types.InlineKeyboardMarkup()
+    
+    # Agar mahsulot bo'lmasa
+    if not products:
+        branch_key = branch if branch else "common"
+        markup.add(telebot.types.InlineKeyboardButton(MESSAGES["button_add"], callback_data=f"product_add:{branch_key}"))
+        markup.add(telebot.types.InlineKeyboardButton(MESSAGES["button_back"], callback_data="product_branch_back"))
+        return markup
     
     # 2 qatordan qo'shish
     for i in range(0, len(products), 2):
@@ -81,9 +92,11 @@ def products_menu(branch=None):
         if row:
             markup.add(*row)
     
+    # Plus tugmasi va Ortga
     branch_key = branch if branch else "common"
     markup.add(telebot.types.InlineKeyboardButton(MESSAGES["button_add"], callback_data=f"product_add:{branch_key}"))
     markup.add(telebot.types.InlineKeyboardButton(MESSAGES["button_back"], callback_data="product_branch_back"))
+    
     return markup
 
 # ==================== USER KEYBOARDS ====================
@@ -114,15 +127,25 @@ def branches_menu_user(action="input"):
             callback_data=f"user_{action}_branch:{branch['name']}"
         ))
     
-    markup.add(telebot.types.InlineKeyboardButton("📚 Umumiy", callback_data=f"user_{action}_branch:common"))
+    markup.add(telebot.types.InlineKeyboardButton("🌍 Umumiy", callback_data=f"user_{action}_branch:common"))
     markup.add(telebot.types.InlineKeyboardButton(MESSAGES["button_back"], callback_data="user_main"))
     return markup
 
 def products_menu_user(branch=None, action="input"):
-    """Foydalanuvchi uchun mahsulotlar - 2 qatordan"""
+    """Foydalanuvchi uchun mahsulotlar - 2 qatordan
+    
+    Args:
+        branch: Filial nomi yoki None (umumiy uchun)
+        action: "input" yoki "remove"
+    """
     db = get_db()
     products = db.get_products_by_branch(branch)
     markup = telebot.types.InlineKeyboardMarkup()
+    
+    # Agar mahsulot bo'lmasa
+    if not products:
+        markup.add(telebot.types.InlineKeyboardButton(MESSAGES["button_back"], callback_data=f"user_{action}_back"))
+        return markup
     
     # 2 qatordan qo'shish
     for i in range(0, len(products), 2):
