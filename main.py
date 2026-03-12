@@ -39,6 +39,22 @@ except Exception as e:
 # ==================== USER STATE STORAGE ====================
 user_states = {}
 
+def get_user_state(user_id):
+    """Foydalanuvchi state'ini xavfsiz qaytarish."""
+    return user_states.get(user_id)
+
+
+def get_user_state_data(user_id):
+    """State dict bo'lsa qaytaradi, aks holda bo'sh dict qaytaradi."""
+    state = get_user_state(user_id)
+    return state if isinstance(state, dict) else {}
+
+
+def get_user_action(user_id):
+    """State ichidagi action qiymatini xavfsiz qaytarish."""
+    return get_user_state_data(user_id).get("action")
+
+
 # ==================== /START ====================
 
 @bot.message_handler(commands=['start'])
@@ -88,11 +104,11 @@ def process_branch_add(message):
         user_states.pop(user_id, None)
         bot.send_message(message.chat.id, MESSAGES["branch_exists"], reply_markup=back_button("admin_branch"))
 
-@bot.message_handler(func=lambda message: user_states.get(message.from_user.id, {}).get("action") == "editing_branch")
+@bot.message_handler(func=lambda message: get_user_action(message.from_user.id) == "editing_branch")
 def process_branch_edit(message):
     """Filial nomini o'zgartirish"""
     user_id = message.from_user.id
-    data = user_states.get(user_id, {})
+    data = get_user_state_data(user_id)
     old_name = data.get("old_name")
     new_name = message.text.strip()
     
@@ -158,11 +174,11 @@ def process_product_type_add(message):
         user_states.pop(user_id, None)
         bot.send_message(message.chat.id, f"❌ Xato yuz berdi: {e}")
 
-@bot.message_handler(func=lambda message: user_states.get(message.from_user.id, {}).get("action") == "editing_product_type")
+@bot.message_handler(func=lambda message: get_user_action(message.from_user.id) == "editing_product_type")
 def process_product_type_edit(message):
     """Mahsulot turi nomini o'zgartirish"""
     user_id = message.from_user.id
-    data = user_states.get(user_id, {})
+    data = get_user_state_data(user_id)
     old_name = data.get("old_name")
     new_name = message.text.strip()
     
@@ -182,11 +198,11 @@ def process_product_type_edit(message):
 
 # ==================== PRODUCT MESSAGE HANDLERS ====================
 
-@bot.message_handler(func=lambda message: user_states.get(message.from_user.id, {}).get("action") == "editing_product")
+@bot.message_handler(func=lambda message: get_user_action(message.from_user.id) == "editing_product")
 def process_product_edit(message):
     """Mahsulot nomini o'zgartirish"""
     user_id = message.from_user.id
-    data = user_states.get(user_id, {})
+    data = get_user_state_data(user_id)
     old_name = data.get("old_name")
     new_name = message.text.strip()
     
@@ -202,11 +218,11 @@ def process_product_edit(message):
     
     bot.send_message(message.chat.id, MESSAGES["product_added"].format(new_name), reply_markup=products_by_type_menu(product_type))
 
-@bot.message_handler(func=lambda message: user_states.get(message.from_user.id, {}).get("action") == "adding_product")
+@bot.message_handler(func=lambda message: get_user_action(message.from_user.id) == "adding_product")
 def process_product_add_name(message):
     """Mahsulot nomini qabul qilish"""
     user_id = message.from_user.id
-    data = user_states.get(user_id, {})
+    data = get_user_state_data(user_id)
     product_name = message.text.strip()
     
     if not product_name:
@@ -225,11 +241,11 @@ def process_product_add_name(message):
     
     bot.send_message(message.chat.id, MESSAGES["product_add_image"], reply_markup=markup)
 
-@bot.message_handler(content_types=['photo'], func=lambda message: user_states.get(message.from_user.id, {}).get("action") == "uploading_product_image")
+@bot.message_handler(content_types=['photo'], func=lambda message: get_user_action(message.from_user.id) == "uploading_product_image")
 def process_product_image(message):
     """Mahsulot rasmi qabul qilish"""
     user_id = message.from_user.id
-    data = user_states.get(user_id, {})
+    data = get_user_state_data(user_id)
     
     image_id = message.photo[-1].file_id
     
@@ -247,7 +263,7 @@ def process_product_image(message):
 
 # ==================== QUANTITY MESSAGE HANDLERS ====================
 
-@bot.message_handler(func=lambda message: user_states.get(message.from_user.id, {}).get("action") == "entering_input_quantity")
+@bot.message_handler(func=lambda message: get_user_action(message.from_user.id) == "entering_input_quantity")
 def process_input_quantity(message):
     """Kiritilish miqdorini qabul qilish"""
     user_id = message.from_user.id
@@ -258,7 +274,7 @@ def process_input_quantity(message):
             bot.send_message(message.chat.id, MESSAGES["error_invalid_quantity"])
             return
         
-        data = user_states.get(user_id, {})
+        data = get_user_state_data(user_id)
         product_name = data.get("product_name")
         branch = data.get("branch")
         product_type = data.get("product_type")
@@ -276,7 +292,7 @@ def process_input_quantity(message):
     except ValueError:
         bot.send_message(message.chat.id, MESSAGES["error_invalid_quantity"])
 
-@bot.message_handler(func=lambda message: user_states.get(message.from_user.id, {}).get("action") == "entering_remove_quantity")
+@bot.message_handler(func=lambda message: get_user_action(message.from_user.id) == "entering_remove_quantity")
 def process_remove_quantity(message):
     """Chiqarilish miqdorini qabul qilish"""
     user_id = message.from_user.id
@@ -287,7 +303,7 @@ def process_remove_quantity(message):
             bot.send_message(message.chat.id, MESSAGES["error_invalid_quantity"])
             return
         
-        data = user_states.get(user_id, {})
+        data = get_user_state_data(user_id)
         product_name = data.get("product_name")
         branch = data.get("branch")
         product_type = data.get("product_type")
@@ -504,7 +520,7 @@ def handle_product_select(call):
     """Mahsulotni tanlash"""
     product_name = call.data.split(":")[1]
     user_id = call.from_user.id
-    data = user_states.get(user_id, {})
+    data = get_user_state_data(user_id)
     product_type = data.get("product_type")
     
     db = get_db()
@@ -556,7 +572,7 @@ def handle_product_delete(call):
     db = get_db()
     db.delete_product(product_name)
     
-    data = user_states.get(user_id, {})
+    data = get_user_state_data(user_id)
     product_type = data.get("product_type")
     user_states.pop(user_id, None)
     
@@ -585,7 +601,13 @@ def handle_product_add(call):
 def handle_product_image_yes(call):
     """Rasm yuklash kerak"""
     user_id = call.from_user.id
-    user_states[user_id]["action"] = "uploading_product_image"
+    state_data = get_user_state_data(user_id)
+    if not state_data:
+        bot.answer_callback_query(call.id, "❌ Jarayon muddati tugagan. Qaytadan boshlang.", show_alert=True)
+        return
+
+    state_data["action"] = "uploading_product_image"
+    user_states[user_id] = state_data
     
     bot.send_message(
         call.message.chat.id,
@@ -597,7 +619,7 @@ def handle_product_image_yes(call):
 def handle_product_image_no(call):
     """Rasm talab qilinmadi"""
     user_id = call.from_user.id
-    data = user_states.get(user_id, {})
+    data = get_user_state_data(user_id)
     
     db = get_db()
     db.add_product(data.get("product_name"), data.get("product_type"))
@@ -704,7 +726,7 @@ def handle_user_input_product(call):
     product_name = call.data.split(":")[1]
     user_id = call.from_user.id
     
-    data = user_states.get(user_id, {})
+    data = get_user_state_data(user_id)
     data["action"] = "selecting_input_branch"
     data["product_name"] = product_name
     user_states[user_id] = data
@@ -745,7 +767,7 @@ def handle_user_input_branch(call):
     branch = call.data.split(":")[1]
     user_id = call.from_user.id
     
-    data = user_states.get(user_id, {})
+    data = get_user_state_data(user_id)
     data["action"] = "entering_input_quantity"
     data["branch"] = branch
     user_states[user_id] = data
@@ -796,7 +818,7 @@ def handle_user_remove_product(call):
     product_name = call.data.split(":")[1]
     user_id = call.from_user.id
     
-    data = user_states.get(user_id, {})
+    data = get_user_state_data(user_id)
     data["action"] = "selecting_remove_branch"
     data["product_name"] = product_name
     user_states[user_id] = data
@@ -837,7 +859,7 @@ def handle_user_remove_branch(call):
     branch = call.data.split(":")[1]
     user_id = call.from_user.id
     
-    data = user_states.get(user_id, {})
+    data = get_user_state_data(user_id)
     data["action"] = "entering_remove_quantity"
     data["branch"] = branch
     user_states[user_id] = data
@@ -1024,7 +1046,7 @@ def handle_product_type_back(call):
 def handle_user_input_back(call):
     """Kiritishdan orqaga"""
     user_id = call.from_user.id
-    data = user_states.get(user_id, {})
+    data = get_user_state_data(user_id)
     product_type = data.get("product_type")
     user_states.pop(user_id, None)
     
@@ -1041,7 +1063,7 @@ def handle_user_input_back(call):
 def handle_user_remove_back(call):
     """Chiqarishdan orqaga"""
     user_id = call.from_user.id
-    data = user_states.get(user_id, {})
+    data = get_user_state_data(user_id)
     product_type = data.get("product_type")
     user_states.pop(user_id, None)
     
