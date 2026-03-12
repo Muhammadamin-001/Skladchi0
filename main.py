@@ -59,8 +59,7 @@ def handle_start(message):
             db.add_user(user_id, username, first_name, approved=False)
         bot.send_message(user_id, MESSAGES["start_user_unapproved"], reply_markup=user_request_menu())
 
-# ==================== MESSAGE HANDLERS - PRIORITY ====================
-# Bu handlerlar AVVAL joyni oladi, callback handlerlardan OLDIN!
+# ==================== MESSAGE HANDLERS - AVVALIGA! ====================
 
 @bot.message_handler(func=lambda message: user_states.get(message.from_user.id) == "waiting_branch_name")
 def process_branch_add(message):
@@ -100,6 +99,7 @@ def process_branch_edit(message):
         bot.send_message(message.chat.id, "❌ Xato yuz berdi", reply_markup=back_button("admin_branch"))
         user_states.pop(user_id, None)
 
+# ✅ ASOSIY TUZATISH - MESSAGE HANDLER AVVALIGA!
 @bot.message_handler(func=lambda message: user_states.get(message.from_user.id) == "waiting_product_type_name")
 def process_product_type_add(message):
     """Mahsulot turi nomini saqlash - CALLBACK DAN OLDIN!"""
@@ -180,7 +180,6 @@ def process_product_edit(message):
     product_type = data.get("product_type")
     user_states.pop(user_id, None)
     
-    logger.info(f"✅ Mahsulot tahrirlandi: {old_name} -> {new_name}")
     bot.send_message(message.chat.id, MESSAGES["product_added"].format(new_name), reply_markup=products_by_type_menu(product_type))
 
 @bot.message_handler(func=lambda message: user_states.get(message.from_user.id, {}).get("action") == "adding_product")
@@ -373,23 +372,6 @@ def handle_admin_product(call):
         reply_markup=product_types_menu()
     )
 
-@bot.callback_query_handler(func=lambda call: call.data == "product_type_add")
-def handle_product_type_add(call):
-    """Yangi mahsulot turi qo'shish"""
-    user_id = call.from_user.id
-    
-    # State belgilash AVVAL
-    user_states[user_id] = "waiting_product_type_name"
-    
-    logger.info(f"User {user_id} tur qo'shish boshladi. State: {user_states[user_id]}")
-    
-    # Xabar yuborish
-    bot.send_message(
-        call.message.chat.id,
-        "✍️ Mahsulot turi (brend) nomini kiriting:",
-        reply_markup=back_button("admin_product")
-    )
-
 @bot.callback_query_handler(func=lambda call: call.data.startswith("product_type_select:"))
 def handle_product_type_select(call):
     """Mahsulot turini tanlash"""
@@ -403,6 +385,30 @@ def handle_product_type_select(call):
         call.message.message_id,
         reply_markup=products_by_type_menu(product_type),
         parse_mode="HTML"
+    )
+
+# ✅ ASOSIY TUZATISH - XABAR O'CHIRISH QO'SHILDI!
+@bot.callback_query_handler(func=lambda call: call.data == "product_type_add")
+def handle_product_type_add(call):
+    """Yangi mahsulot turi qo'shish"""
+    user_id = call.from_user.id
+    
+    # ✅ XABARNI O'CHIRISH - ASOSIY TUZATISH!
+    try:
+        bot.delete_message(call.message.chat.id, call.message.message_id)
+    except Exception as e:
+        logger.warning(f"⚠️ Xabarni o'chirishda xato: {e}")
+    
+    # State belgilash
+    user_states[user_id] = "waiting_product_type_name"
+    
+    logger.info(f"User {user_id} tur qo'shish boshladi. State: {user_states[user_id]}")
+    
+    # Xabar yuborish - YANGI XABAR!
+    bot.send_message(
+        call.message.chat.id,
+        "✍️ Mahsulot turi (brend) nomini kiriting:",
+        reply_markup=back_button("admin_product")
     )
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("product_type_edit:"))
@@ -424,8 +430,6 @@ def handle_product_type_delete(call):
     product_type = call.data.split(":")[1]
     db = get_db()
     db.delete_product_type(product_type)
-    
-    logger.info(f"✅ Tur o'chirildi: {product_type}")
     
     bot.edit_message_text(
         f"🗑️ '{product_type}' turi o'chirildi",
