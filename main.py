@@ -89,13 +89,18 @@ def process_branch_add(message):
     """Filial nomini saqlash"""
     db = get_db()
     name = message.text.strip()
+    user_id = message.from_user.id
+    
+    if not name:
+        bot.send_message(message.chat.id, "❌ Filial nomi bo'sh bo'lishi mumkin emas")
+        return
     
     if db.add_branch(name):
+        user_states.pop(user_id, None)
         bot.send_message(message.chat.id, MESSAGES["branch_added"].format(name), reply_markup=branches_menu())
     else:
         bot.send_message(message.chat.id, MESSAGES["branch_exists"], reply_markup=back_button("admin_branch"))
-    
-    user_states.pop(message.from_user.id, None)
+        user_states.pop(user_id, None)
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("branch_select:"))
 def handle_branch_select(call):
@@ -138,13 +143,17 @@ def process_branch_edit(message):
     old_name = data.get("old_name")
     new_name = message.text.strip()
     
+    if not new_name:
+        bot.send_message(message.chat.id, "❌ Filial nomi bo'sh bo'lishi mumkin emas")
+        return
+    
     db = get_db()
     if db.update_branch(old_name, new_name):
+        user_states.pop(user_id, None)
         bot.send_message(message.chat.id, MESSAGES["branch_renamed"].format(new_name), reply_markup=branches_menu())
     else:
         bot.send_message(message.chat.id, "❌ Xato yuz berdi", reply_markup=back_button("admin_branch"))
-    
-    user_states.pop(user_id, None)
+        user_states.pop(user_id, None)
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("branch_delete:"))
 def handle_branch_delete(call):
@@ -160,7 +169,7 @@ def handle_branch_delete(call):
         reply_markup=branches_menu()
     )
 
-# ==================== ADMIN PRODUCT HANDLERS (YANGILANGAN) ====================
+# ==================== ADMIN PRODUCT HANDLERS ====================
 
 @bot.callback_query_handler(func=lambda call: call.data == "admin_product")
 def handle_admin_product(call):
@@ -195,7 +204,6 @@ def handle_product_type_select(call):
 def handle_product_type_add(call):
     """Yangi mahsulot turi qo'shish"""
     user_id = call.from_user.id
-    bot.delete_message(call.message.chat.id, call.message.message_id)
     user_states[user_id] = "waiting_product_type_name"
     
     bot.send_message(
@@ -208,20 +216,27 @@ def handle_product_type_add(call):
 def process_product_type_add(message):
     """Mahsulot turi nomini saqlash"""
     user_id = message.from_user.id
-    db = get_db()
     name = message.text.strip()
+    
+    if not name:
+        bot.send_message(message.chat.id, "❌ Tur nomi bo'sh bo'lishi mumkin emas")
+        return
+    
+    db = get_db()
     
     if db.add_product_type(name):
         user_states.pop(user_id, None)
+        logger.info(f"✅ Tur qo'shildi: {name}")
         bot.send_message(
             message.chat.id,
-            f"✅ Mahsulot turi '{name}' qo'shildi",
+            f"✅ '{name}' turi qo'shildi!",
             reply_markup=product_types_menu()
         )
     else:
+        logger.warning(f"❌ Tur mavjud: {name}")
         bot.send_message(
             message.chat.id,
-            f"❌ '{name}' nomli tur allaqachon mavjud",
+            f"❌ '{name}' turi allaqachon mavjud!",
             reply_markup=back_button("admin_product")
         )
         user_states.pop(user_id, None)
@@ -282,13 +297,17 @@ def process_product_edit(message):
     old_name = data.get("old_name")
     new_name = message.text.strip()
     
+    if not new_name:
+        bot.send_message(message.chat.id, "❌ Mahsulot nomi bo'sh bo'lishi mumkin emas")
+        return
+    
     db = get_db()
     db.update_product(old_name, new_name)
     
     product_type = data.get("product_type")
+    user_states.pop(user_id, None)
     
     bot.send_message(message.chat.id, MESSAGES["product_added"].format(new_name), reply_markup=products_by_type_menu(product_type))
-    user_states.pop(user_id, None)
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("product_delete:"))
 def handle_product_delete(call):
@@ -312,7 +331,6 @@ def handle_product_delete(call):
 def handle_product_add(call):
     """Mahsulot qo'shish"""
     product_type = call.data.split(":")[1]
-    
     user_id = call.from_user.id
     user_states[user_id] = {"action": "adding_product", "product_type": product_type}
     
@@ -327,7 +345,13 @@ def process_product_add_name(message):
     """Mahsulot nomini qabul qilish"""
     user_id = message.from_user.id
     data = user_states.get(user_id, {})
-    data["product_name"] = message.text.strip()
+    product_name = message.text.strip()
+    
+    if not product_name:
+        bot.send_message(message.chat.id, "❌ Mahsulot nomi bo'sh bo'lishi mumkin emas")
+        return
+    
+    data["product_name"] = product_name
     data["action"] = "adding_product_image"
     user_states[user_id] = data
     
@@ -361,14 +385,14 @@ def handle_product_image_no(call):
     db.add_product(data.get("product_name"), data.get("product_type"))
     
     product_type = data.get("product_type")
+    user_states.pop(user_id, None)
+    
     bot.edit_message_text(
         MESSAGES["product_added"].format(data.get("product_name")),
         call.message.chat.id,
         call.message.message_id,
         reply_markup=products_by_type_menu(product_type)
     )
-    
-    user_states.pop(user_id, None)
 
 @bot.message_handler(content_types=['photo'], func=lambda message: user_states.get(message.from_user.id, {}).get("action") == "uploading_product_image")
 def process_product_image(message):
@@ -382,15 +406,15 @@ def process_product_image(message):
     db.add_product(data.get("product_name"), data.get("product_type"), image_id)
     
     product_type = data.get("product_type")
+    user_states.pop(user_id, None)
+    
     bot.send_message(
         message.chat.id,
         MESSAGES["product_added"].format(data.get("product_name")),
         reply_markup=products_by_type_menu(product_type)
     )
-    
-    user_states.pop(user_id, None)
 
-# ==================== ADMIN LIST HANDLERS (YANGILANGAN) ====================
+# ==================== ADMIN LIST HANDLERS ====================
 
 @bot.callback_query_handler(func=lambda call: call.data == "admin_list")
 def handle_admin_list(call):
@@ -442,7 +466,7 @@ def handle_admin_list_branch(call):
         parse_mode="HTML"
     )
 
-# ==================== USER INPUT HANDLERS (YANGILANGAN) ====================
+# ==================== USER INPUT HANDLERS ====================
 
 @bot.callback_query_handler(func=lambda call: call.data == "user_input")
 def handle_user_input(call):
@@ -458,7 +482,6 @@ def handle_user_input(call):
 def handle_user_input_type(call):
     """Kiritish uchun mahsulot turi tanlash"""
     product_type = call.data.split(":")[1]
-    
     user_id = call.from_user.id
     user_states[user_id] = {"action": "selecting_input_product", "product_type": product_type}
     
@@ -534,13 +557,14 @@ def handle_user_input_branch(call):
 @bot.message_handler(func=lambda message: user_states.get(message.from_user.id, {}).get("action") == "entering_input_quantity")
 def process_input_quantity(message):
     """Kiritilish miqdorini qabul qilish"""
+    user_id = message.from_user.id
+    
     try:
         quantity = int(message.text)
         if quantity <= 0:
             bot.send_message(message.chat.id, MESSAGES["error_invalid_quantity"])
             return
         
-        user_id = message.from_user.id
         data = user_states.get(user_id, {})
         product_name = data.get("product_name")
         branch = data.get("branch")
@@ -549,17 +573,17 @@ def process_input_quantity(message):
         db = get_db()
         new_qty = db.add_inventory(product_name, branch, quantity)
         
+        user_states.pop(user_id, None)
+        
         bot.send_message(
             message.chat.id,
             MESSAGES["user_product_added"].format(product_name, quantity, new_qty),
             reply_markup=products_by_type_menu_user(product_type, "input")
         )
-        
-        user_states.pop(user_id, None)
     except ValueError:
         bot.send_message(message.chat.id, MESSAGES["error_invalid_quantity"])
 
-# ==================== USER REMOVE HANDLERS (YANGILANGAN) ====================
+# ==================== USER REMOVE HANDLERS ====================
 
 @bot.callback_query_handler(func=lambda call: call.data == "user_remove")
 def handle_user_remove(call):
@@ -575,7 +599,6 @@ def handle_user_remove(call):
 def handle_user_remove_type(call):
     """Chiqarish uchun mahsulot turi tanlash"""
     product_type = call.data.split(":")[1]
-    
     user_id = call.from_user.id
     user_states[user_id] = {"action": "selecting_remove_product", "product_type": product_type}
     
@@ -654,13 +677,14 @@ def handle_user_remove_branch(call):
 @bot.message_handler(func=lambda message: user_states.get(message.from_user.id, {}).get("action") == "entering_remove_quantity")
 def process_remove_quantity(message):
     """Chiqarilish miqdorini qabul qilish"""
+    user_id = message.from_user.id
+    
     try:
         quantity = int(message.text)
         if quantity <= 0:
             bot.send_message(message.chat.id, MESSAGES["error_invalid_quantity"])
             return
         
-        user_id = message.from_user.id
         data = user_states.get(user_id, {})
         product_name = data.get("product_name")
         branch = data.get("branch")
@@ -669,13 +693,13 @@ def process_remove_quantity(message):
         db = get_db()
         new_qty = db.remove_inventory(product_name, branch, quantity)
         
+        user_states.pop(user_id, None)
+        
         bot.send_message(
             message.chat.id,
             MESSAGES["user_product_removed"].format(product_name, quantity, new_qty),
             reply_markup=products_by_type_menu_user(product_type, "remove")
         )
-        
-        user_states.pop(user_id, None)
     except ValueError:
         bot.send_message(message.chat.id, MESSAGES["error_invalid_quantity"])
 
@@ -736,7 +760,7 @@ def handle_send_request(call):
     
     markup = telebot.types.InlineKeyboardMarkup()
     markup.add(
-        telebot.types.InlineKeyboardButton("��� Tasdiqlash", callback_data=f"approve_user:{user_id}"),
+        telebot.types.InlineKeyboardButton("✅ Tasdiqlash", callback_data=f"approve_user:{user_id}"),
         telebot.types.InlineKeyboardButton("❌ Rad Qilish", callback_data=f"reject_user:{user_id}")
     )
     
@@ -839,13 +863,14 @@ def handle_user_input_back(call):
     product_type = data.get("product_type")
     user_states.pop(user_id, None)
     
-    bot.edit_message_text(
-        f"📦 {product_type} - Mahsulotlarni tanlang:",
-        call.message.chat.id,
-        call.message.message_id,
-        reply_markup=products_by_type_menu_user(product_type, "input"),
-        parse_mode="HTML"
-    )
+    if product_type:
+        bot.edit_message_text(
+            f"📦 {product_type} - Mahsulotlarni tanlang:",
+            call.message.chat.id,
+            call.message.message_id,
+            reply_markup=products_by_type_menu_user(product_type, "input"),
+            parse_mode="HTML"
+        )
 
 @bot.callback_query_handler(func=lambda call: call.data == "user_remove_back")
 def handle_user_remove_back(call):
@@ -855,15 +880,16 @@ def handle_user_remove_back(call):
     product_type = data.get("product_type")
     user_states.pop(user_id, None)
     
-    bot.edit_message_text(
-        f"📦 {product_type} - Mahsulotlarni tanlang:",
-        call.message.chat.id,
-        call.message.message_id,
-        reply_markup=products_by_type_menu_user(product_type, "remove"),
-        parse_mode="HTML"
-    )
+    if product_type:
+        bot.edit_message_text(
+            f"📦 {product_type} - Mahsulotlarni tanlang:",
+            call.message.chat.id,
+            call.message.message_id,
+            reply_markup=products_by_type_menu_user(product_type, "remove"),
+            parse_mode="HTML"
+        )
 
-@bot.callback_query_handler(func=lambda call: call.data == "user_list")
+@bot.callback_query_handler(func=lambda call: call.data == "user_list_back")
 def handle_user_list_back(call):
     """Ro'yxatdan orqaba"""
     user_id = call.from_user.id
