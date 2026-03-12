@@ -564,6 +564,8 @@ def handle_product_edit(call):
     """Mahsulot tahrirlash"""
     product_name = call.data.split(":")[1]
     user_id = call.from_user.id
+    bot.delete_message(call.message.chat.id, call.message.message_id)
+    
     user_states[user_id] = {"action": "editing_product", "old_name": product_name}
     
     bot.send_message(
