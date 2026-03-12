@@ -131,11 +131,18 @@ def product_types_menu_user(action="input"):
     types = db.get_all_product_types()
     markup = telebot.types.InlineKeyboardMarkup()
     
-    for ptype in types:
-        markup.add(telebot.types.InlineKeyboardButton(
-            text=ptype["name"],
-            callback_data=f"user_{action}_type:{ptype['name']}"
-        ))
+    # 2 tadan bir qatorda chiqsin
+    for i in range(0, len(types), 2):
+        row = []
+        for j in range(2):
+            if i + j < len(types):
+                ptype = types[i + j]
+                row.append(telebot.types.InlineKeyboardButton(
+                    text=ptype["name"],
+                    callback_data=f"user_{action}_type:{ptype['name']}"
+                ))
+        if row:
+            markup.add(*row)
     
     markup.add(telebot.types.InlineKeyboardButton(MESSAGES["button_back"], callback_data="user_main"))
     return markup
@@ -183,16 +190,43 @@ def branches_menu_user(action="input"):
     return markup
 
 def list_branches_menu():
-    """Ro'yxat uchun filiallar"""
+    """Ro'yxat uchun mahsulot turlari"""
     db = get_db()
-    branches = db.get_all_branches()
+    types = db.get_all_product_types()
     markup = telebot.types.InlineKeyboardMarkup()
     
-    for branch in branches:
-        markup.add(telebot.types.InlineKeyboardButton(
-            text=branch["name"],
-            callback_data=f"list_branch:{branch['name']}"
-        ))
+    for i in range(0, len(types), 2):
+       row = []
+       for j in range(2):
+           if i + j < len(types):
+               ptype = types[i + j]
+               row.append(telebot.types.InlineKeyboardButton(
+                   text=ptype["name"],
+                   callback_data=f"list_type:{ptype['name']}"
+               ))
+       if row:
+           markup.add(*row)
     
     markup.add(telebot.types.InlineKeyboardButton(MESSAGES["button_back"], callback_data="user_main"))
+    return markup
+
+def list_products_by_type_menu(product_type):
+    """Ro'yxat uchun mahsulotlar (type bo'yicha)"""
+    db = get_db()
+    products = db.get_products_by_type(product_type)
+    markup = telebot.types.InlineKeyboardMarkup()
+
+    for i in range(0, len(products), 2):
+        row = []
+        for j in range(2):
+            if i + j < len(products):
+                product = products[i + j]
+                row.append(telebot.types.InlineKeyboardButton(
+                    text=product["name"],
+                    callback_data=f"list_product:{product['name']}"
+                ))
+        if row:
+            markup.add(*row)
+
+    markup.add(telebot.types.InlineKeyboardButton(MESSAGES["button_back"], callback_data="user_list"))
     return markup

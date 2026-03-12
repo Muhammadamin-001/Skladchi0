@@ -17,7 +17,8 @@ from keyboards.telebot_keyboards import (
     product_types_menu_user,
     products_by_type_menu_user,
     branches_menu_user,
-    list_branches_menu
+    list_branches_menu,
+    list_products_by_type_menu
 )
 
 logging.basicConfig(
@@ -873,35 +874,60 @@ def handle_user_list(call):
     user_states.pop(user_id, None)
     
     bot.edit_message_text(
-        "📋 Ro'yxat\n\nFilial tanlang:",
+        "📋 Ro'yxat\n\nMahsulot turini tanlang:",
         call.message.chat.id,
         call.message.message_id,
         reply_markup=list_branches_menu()
     )
 
-@bot.callback_query_handler(func=lambda call: call.data.startswith("list_branch:"))
-def handle_list_branch(call):
-    """Filial ro'yxati"""
-    branch = call.data.split(":")[1]
+@bot.callback_query_handler(func=lambda call: call.data.startswith("list_type:"))
+def handle_list_type(call):
+    """Ro'yxat uchun mahsulot turini tanlash"""
+    product_type = call.data.split(":", 1)[1]
+    user_states[call.from_user.id] = {"action": "listing_products", "product_type": product_type}
+
+    bot.edit_message_text(
+        f"📋 {product_type} turidagi mahsulotlar:\n\nMahsulotni tanlang:",
+        call.message.chat.id,
+        call.message.message_id,
+        reply_markup=list_products_by_type_menu(product_type),
+        parse_mode="HTML"
+    )
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith("list_product:"))
+def handle_list_product(call):
+    """Tanlangan mahsulot qoldig'ini ko'rsatish"""
+    product_name = call.data.split(":", 1)[1]
+
     
     db = get_db()
-    inventory = db.get_inventory_by_branch(branch)
-    
-    text = MESSAGES["list_title"] + "\n\n"
-    
-    if not inventory:
-        text = MESSAGES["list_empty"]
-    else:
-        for idx, item in enumerate(inventory, 1):
-            quantity = item.get("quantity", 0)
-            text += f"{idx}. {item['product_name']}: <b>{quantity}</b> dona\n"
-    
+    inventory = db.get_total_inventory_by_product(product_name)
+    quantity = inventory.get("quantity", 0)
+    product = db.get_product_by_name(product_name)
+
+    text = f"📦 <b>{product_name}</b>\n📊 Skladda qoldi: <b>{quantity}</b> dona"
+    markup = back_button("user_list_products_back")
+
+    if product and product.get("image_id"):
+        try:
+            bot.delete_message(call.message.chat.id, call.message.message_id)
+            bot.send_photo(
+                call.message.chat.id,
+                product["image_id"],
+                caption=text,
+                parse_mode="HTML",
+                reply_markup=markup
+            )
+            return
+        except Exception as e:
+            logger.warning(f"⚠️ Rasm bilan ro'yxat yuborishda xato: {e}")
+            
     bot.edit_message_text(
         text,
         call.message.chat.id,
         call.message.message_id,
-        reply_markup=back_button("user_list"),
-        parse_mode="HTML"
+        parse_mode="HTML",
+        reply_markup=markup
     )
 
 # ==================== REQUEST HANDLERS ====================
@@ -1039,13 +1065,25 @@ def handle_user_input_back(call):
     user_states.pop(user_id, None)
     
     if product_type:
-        bot.edit_message_text(
-            f"📦 {product_type} - Mahsulotlarni tanlang:",
-            call.message.chat.id,
-            call.message.message_id,
-            reply_markup=products_by_type_menu_user(product_type, "input"),
-            parse_mode="HTML"
-        )
+        try:
+           bot.edit_message_text(
+               f"📦 {product_type} - Mahsulotlarni tanlang:",
+               call.message.chat.id,
+               call.message.message_id,
+               reply_markup=products_by_type_menu_user(product_type, "input"),
+               parse_mode="HTML"
+           )
+        except Exception:
+           try:
+               bot.delete_message(call.message.chat.id, call.message.message_id)
+           except Exception:
+               pass
+           bot.send_message(
+               call.message.chat.id,
+               f"📦 {product_type} - Mahsulotlarni tanlang:",
+               reply_markup=products_by_type_menu_user(product_type, "input"),
+               parse_mode="HTML"
+           )
 
 @bot.callback_query_handler(func=lambda call: call.data == "user_remove_back")
 def handle_user_remove_back(call):
@@ -1056,13 +1094,25 @@ def handle_user_remove_back(call):
     user_states.pop(user_id, None)
     
     if product_type:
-        bot.edit_message_text(
-            f"📦 {product_type} - Mahsulotlarni tanlang:",
-            call.message.chat.id,
-            call.message.message_id,
-            reply_markup=products_by_type_menu_user(product_type, "remove"),
-            parse_mode="HTML"
-        )
+        try:
+            bot.edit_message_text(
+                f"📦 {product_type} - Mahsulotlarni tanlang:",
+                call.message.chat.id,
+                call.message.message_id,
+                reply_markup=products_by_type_menu_user(product_type, "remove"),
+                parse_mode="HTML"
+            )
+        except Exception:
+            try:
+                bot.delete_message(call.message.chat.id, call.message.message_id)
+            except Exception:
+                pass
+            bot.send_message(
+                call.message.chat.id,
+                f"📦 {product_type} - Mahsulotlarni tanlang:",
+                reply_markup=products_by_type_menu_user(product_type, "remove"),
+                parse_mode="HTML"
+            )
 
 @bot.callback_query_handler(func=lambda call: call.data == "user_list_back")
 def handle_user_list_back(call):
@@ -1071,10 +1121,32 @@ def handle_user_list_back(call):
     user_states.pop(user_id, None)
     
     bot.edit_message_text(
-        "📋 Ro'yxat\n\nFilial tanlang:",
+        "📋 Ro'yxat\n\nMahsulot turini tanlang:",
         call.message.chat.id,
         call.message.message_id,
         reply_markup=list_branches_menu()
+    )
+    
+@bot.callback_query_handler(func=lambda call: call.data == "user_list_products_back")
+def handle_user_list_products_back(call):
+    """Mahsulot qoldig'idan mahsulotlar ro'yxatiga qaytish"""
+    user_id = call.from_user.id
+    data = get_user_state_data(user_id)
+    product_type = data.get("product_type")
+
+    if not product_type:
+        bot.answer_callback_query(call.id, "❌ Tur topilmadi, qaytadan tanlang", show_alert=True)
+        return
+
+    try:
+        bot.delete_message(call.message.chat.id, call.message.message_id)
+    except Exception:
+        pass
+
+    bot.send_message(
+        call.message.chat.id,
+        f"📋 {product_type} turidagi mahsulotlar:\n\nMahsulotni tanlang:",
+        reply_markup=list_products_by_type_menu(product_type)
     )
 
 # ==================== WEBHOOK ====================
