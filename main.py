@@ -1109,13 +1109,38 @@ def handle_user_remove_products_back(call):
         data.pop("branch", None)
         user_states[user_id] = data
 
-        bot.edit_message_text(
-            f"📦 {product_type} - Mahsulotlarni tanlang:",
-            call.message.chat.id,
-            call.message.message_id,
-            reply_markup=products_by_type_menu_user(product_type, "remove", back_callback="user_remove_types_back"),
-            parse_mode="HTML"
-        )
+        text = f"📦 {product_type} - Mahsulotlarni tanlang:"
+        reply_markup = products_by_type_menu_user(product_type, "remove", back_callback="user_remove_types_back")
+
+        try:
+            if getattr(call.message, "content_type", "") == "photo":
+                bot.edit_message_caption(
+                    caption=text,
+                    chat_id=call.message.chat.id,
+                    message_id=call.message.message_id,
+                    reply_markup=reply_markup,
+                    parse_mode="HTML"
+                )
+            else:
+                bot.edit_message_text(
+                    text,
+                    call.message.chat.id,
+                    call.message.message_id,
+                    reply_markup=reply_markup,
+                    parse_mode="HTML"
+                )
+        except Exception:
+            try:
+                bot.delete_message(call.message.chat.id, call.message.message_id)
+            except Exception:
+                pass
+
+            bot.send_message(
+                call.message.chat.id,
+                text,
+                reply_markup=reply_markup,
+                parse_mode="HTML"
+            )
 
 @bot.callback_query_handler(func=lambda call: call.data == "user_remove_types_back")
 def handle_user_remove_types_back(call):
@@ -1141,25 +1166,38 @@ def handle_user_input_back(call):
     user_states.pop(user_id, None)
     
     if product_type:
+        text = f"📦 {product_type} - Mahsulotlarni tanlang:"
+        reply_markup = products_by_type_menu_user(product_type, "input", back_callback="user_input_types_back")
+        
         try:
-           bot.edit_message_text(
-               f"📦 {product_type} - Mahsulotlarni tanlang:",
-               call.message.chat.id,
-               call.message.message_id,
-               reply_markup=products_by_type_menu_user(product_type, "input", back_callback="user_input_types_back"),
-               parse_mode="HTML"
-           )
+           if getattr(call.message, "content_type", "") == "photo":
+                bot.edit_message_caption(
+                    caption=text,
+                    chat_id=call.message.chat.id,
+                    message_id=call.message.message_id,
+                    reply_markup=reply_markup,
+                    parse_mode="HTML"
+                )
+           else:
+                bot.edit_message_text(
+                    text,
+                    call.message.chat.id,
+                    call.message.message_id,
+                    reply_markup=reply_markup,
+                    parse_mode="HTML"
+                )
         except Exception:
            try:
-               bot.delete_message(call.message.chat.id, call.message.message_id)
+                bot.delete_message(call.message.chat.id, call.message.message_id)
            except Exception:
-               pass
+                pass
+
            bot.send_message(
-               call.message.chat.id,
-               f"📦 {product_type} - Mahsulotlarni tanlang:",
-               reply_markup=products_by_type_menu_user(product_type, "input", back_callback="user_input_types_back"),
-               parse_mode="HTML"
-           )
+                call.message.chat.id,
+                text,
+                reply_markup=reply_markup,
+                parse_mode="HTML"
+            )
 
 @bot.callback_query_handler(func=lambda call: call.data == "user_remove_back")
 def handle_user_remove_back(call):
@@ -1170,14 +1208,26 @@ def handle_user_remove_back(call):
     user_states.pop(user_id, None)
     
     if product_type:
+        text = f"📦 {product_type} - Mahsulotlarni tanlang:"
+        reply_markup = products_by_type_menu_user(product_type, "remove", back_callback="user_remove_types_back")
+        
         try:
-            bot.edit_message_text(
-                f"📦 {product_type} - Mahsulotlarni tanlang:",
-                call.message.chat.id,
-                call.message.message_id,
-                reply_markup=products_by_type_menu_user(product_type, "remove", back_callback="user_remove_types_back"),
-                parse_mode="HTML"
-            )
+            if getattr(call.message, "content_type", "") == "photo":
+                bot.edit_message_caption(
+                    caption=text,
+                    chat_id=call.message.chat.id,
+                    message_id=call.message.message_id,
+                    reply_markup=reply_markup,
+                    parse_mode="HTML"
+                )
+            else:
+                bot.edit_message_text(
+                    text,
+                    call.message.chat.id,
+                    call.message.message_id,
+                    reply_markup=reply_markup,
+                    parse_mode="HTML"
+                )
         except Exception:
             try:
                 bot.delete_message(call.message.chat.id, call.message.message_id)
@@ -1185,8 +1235,8 @@ def handle_user_remove_back(call):
                 pass
             bot.send_message(
                 call.message.chat.id,
-                f"📦 {product_type} - Mahsulotlarni tanlang:",
-                reply_markup=products_by_type_menu_user(product_type, "remove", back_callback="user_remove_types_back"),
+                text,
+                reply_markup=reply_markup,
                 parse_mode="HTML"
             )
 
