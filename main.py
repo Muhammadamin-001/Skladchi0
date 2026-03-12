@@ -10,6 +10,7 @@ from keyboards.telebot_keyboards import (
     back_button,
     product_types_menu,
     products_by_type_menu,
+    product_type_actions_menu,
     user_main_menu,
     user_request_menu,
     product_types_menu_user,
@@ -169,7 +170,7 @@ def handle_branch_delete(call):
         reply_markup=branches_menu()
     )
 
-# ==================== ADMIN PRODUCT HANDLERS ====================
+# ==================== ADMIN PRODUCT TYPE HANDLERS ====================
 
 @bot.callback_query_handler(func=lambda call: call.data == "admin_product")
 def handle_admin_product(call):
@@ -218,6 +219,8 @@ def process_product_type_add(message):
     user_id = message.from_user.id
     name = message.text.strip()
     
+    logger.info(f"User {user_id} adding product type: {name}")
+    
     if not name:
         bot.send_message(message.chat.id, "❌ Tur nomi bo'sh bo'lishi mumkin emas")
         return
@@ -240,6 +243,68 @@ def process_product_type_add(message):
             reply_markup=back_button("admin_product")
         )
         user_states.pop(user_id, None)
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith("product_type_edit:"))
+def handle_product_type_edit(call):
+    """Mahsulot turini tahrirlash"""
+    product_type = call.data.split(":")[1]
+    user_id = call.from_user.id
+    user_states[user_id] = {"action": "editing_product_type", "old_name": product_type}
+    
+    bot.send_message(
+        call.message.chat.id,
+        "✍️ Yangi tur nomini kiriting:",
+        reply_markup=back_button("admin_product")
+    )
+
+@bot.message_handler(func=lambda message: user_states.get(message.from_user.id, {}).get("action") == "editing_product_type")
+def process_product_type_edit(message):
+    """Mahsulot turi nomini o'zgartirish"""
+    user_id = message.from_user.id
+    data = user_states.get(user_id, {})
+    old_name = data.get("old_name")
+    new_name = message.text.strip()
+    
+    if not new_name:
+        bot.send_message(message.chat.id, "❌ Tur nomi bo'sh bo'lishi mumkin emas")
+        return
+    
+    db = get_db()
+    if db.update_product_type(old_name, new_name):
+        user_states.pop(user_id, None)
+        bot.send_message(message.chat.id, f"✅ '{new_name}' turi saqlandi!", reply_markup=product_types_menu())
+    else:
+        bot.send_message(message.chat.id, "❌ Xato yuz berdi", reply_markup=back_button("admin_product"))
+        user_states.pop(user_id, None)
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith("product_type_delete:"))
+def handle_product_type_delete(call):
+    """Mahsulot turini o'chirish"""
+    product_type = call.data.split(":")[1]
+    db = get_db()
+    db.delete_product_type(product_type)
+    
+    bot.edit_message_text(
+        f"🗑️ '{product_type}' turi o'chirildi",
+        call.message.chat.id,
+        call.message.message_id,
+        reply_markup=product_types_menu()
+    )
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith("product_type_actions:"))
+def handle_product_type_actions(call):
+    """Mahsulot turi faoliyatlari"""
+    product_type = call.data.split(":")[1]
+    
+    bot.edit_message_text(
+        f"📦 <b>{product_type}</b> - Faoliyatni tanlang:",
+        call.message.chat.id,
+        call.message.message_id,
+        reply_markup=product_type_actions_menu(product_type),
+        parse_mode="HTML"
+    )
+
+# ==================== ADMIN PRODUCT HANDLERS ====================
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("product_select:"))
 def handle_product_select(call):
@@ -331,6 +396,7 @@ def handle_product_delete(call):
 def handle_product_add(call):
     """Mahsulot qo'shish"""
     product_type = call.data.split(":")[1]
+    
     user_id = call.from_user.id
     user_states[user_id] = {"action": "adding_product", "product_type": product_type}
     
@@ -482,6 +548,7 @@ def handle_user_input(call):
 def handle_user_input_type(call):
     """Kiritish uchun mahsulot turi tanlash"""
     product_type = call.data.split(":")[1]
+    
     user_id = call.from_user.id
     user_states[user_id] = {"action": "selecting_input_product", "product_type": product_type}
     
@@ -599,6 +666,7 @@ def handle_user_remove(call):
 def handle_user_remove_type(call):
     """Chiqarish uchun mahsulot turi tanlash"""
     product_type = call.data.split(":")[1]
+    
     user_id = call.from_user.id
     user_states[user_id] = {"action": "selecting_remove_product", "product_type": product_type}
     

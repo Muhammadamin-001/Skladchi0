@@ -38,9 +38,7 @@ def back_button(callback_data="back"):
     return markup
 
 def product_types_menu():
-    """Mahsulot turlari (brendlar) - 2 qatordan
-    YANGI: tur -> mahsulot struktura
-    """
+    """Mahsulot turlari menyu - 2 qatordan"""
     db = get_db()
     types = db.get_all_product_types()
     markup = telebot.types.InlineKeyboardMarkup()
@@ -66,6 +64,16 @@ def product_types_menu():
     markup.add(telebot.types.InlineKeyboardButton(MESSAGES["button_add"], callback_data="product_type_add"))
     markup.add(telebot.types.InlineKeyboardButton(MESSAGES["button_back"], callback_data="admin_back"))
     
+    return markup
+
+def product_type_actions_menu(product_type):
+    """Mahsulot turi faoliyatlari"""
+    markup = telebot.types.InlineKeyboardMarkup()
+    markup.add(
+        telebot.types.InlineKeyboardButton(MESSAGES["button_edit"], callback_data=f"product_type_edit:{product_type}"),
+        telebot.types.InlineKeyboardButton(MESSAGES["button_delete"], callback_data=f"product_type_delete:{product_type}")
+    )
+    markup.add(telebot.types.InlineKeyboardButton(MESSAGES["button_back"], callback_data="product_type_back"))
     return markup
 
 def products_by_type_menu(product_type):
