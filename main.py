@@ -600,6 +600,7 @@ def handle_product_add(call):
     product_type = call.data.split(":")[1]
     
     user_id = call.from_user.id
+    bot.delete_message(call.message.chat.id, call.message.message_id)
     user_states[user_id] = {"action": "adding_product", "product_type": product_type}
     
     bot.send_message(
@@ -612,6 +613,7 @@ def handle_product_add(call):
 def handle_product_image_yes(call):
     """Rasm yuklash kerak"""
     user_id = call.from_user.id
+    bot.delete_message(call.message.chat.id, call.message.message_id)
     state_data = get_user_state_data(user_id)
     if not state_data:
         bot.answer_callback_query(call.id, "❌ Jarayon muddati tugagan. Qaytadan boshlang.", show_alert=True)
