@@ -8,13 +8,14 @@ logger = logging.getLogger(__name__)
 # ==================== WAREHOUSE KEYBOARDS ====================
 
 def warehouse_list_menu():
-    """✅ Sklad ro'yxati - BIRINCHI BO'LIM"""
+    """✅ Sklad ro'yxati - PLUS TUGMA BILAN!"""
     try:
         db = get_db()
         warehouses = db.get_all_warehouses()
         
         markup = telebot.types.InlineKeyboardMarkup()
         
+        # ✅ BARCHA SKLADLAR
         for warehouse in warehouses:
             row = [
                 telebot.types.InlineKeyboardButton(
@@ -28,6 +29,7 @@ def warehouse_list_menu():
             ]
             markup.add(*row)
         
+        # ✅ PLUS TUGMA - SKLAD QO'SHISH
         markup.add(telebot.types.InlineKeyboardButton(
             MESSAGES["button_add"],
             callback_data="warehouse_add"
@@ -39,7 +41,7 @@ def warehouse_list_menu():
         return telebot.types.InlineKeyboardMarkup()
 
 def warehouse_actions_menu(warehouse):
-    """Sklad faoliyatlari"""
+    """Sklad faoliyatlari - tahrirlash va o'chirish"""
     markup = telebot.types.InlineKeyboardMarkup()
     markup.add(
         telebot.types.InlineKeyboardButton(
@@ -52,7 +54,7 @@ def warehouse_actions_menu(warehouse):
         )
     )
     markup.add(telebot.types.InlineKeyboardButton(
-        MESSAGES["button_back"],
+        "⬅️ Qaytish",
         callback_data="warehouse_list"
     ))
     return markup
@@ -148,12 +150,7 @@ def product_types_menu(warehouse, branch):
         
         markup = telebot.types.InlineKeyboardMarkup()
         
-        if not types:
-            markup.add(telebot.types.InlineKeyboardButton(
-                MESSAGES["button_add"],
-                callback_data=f"product_type_add:{warehouse}:{branch}"
-            ))
-        else:
+        if types:
             for ptype in types:
                 row = [
                     telebot.types.InlineKeyboardButton(
@@ -166,11 +163,12 @@ def product_types_menu(warehouse, branch):
                     )
                 ]
                 markup.add(*row)
-            
-            markup.add(telebot.types.InlineKeyboardButton(
-                MESSAGES["button_add"],
-                callback_data=f"product_type_add:{warehouse}:{branch}"
-            ))
+        
+        # ✅ PLUS TUGMA - TUR QO'SHISH
+        markup.add(telebot.types.InlineKeyboardButton(
+            MESSAGES["button_add"],
+            callback_data=f"product_type_add:{warehouse}:{branch}"
+        ))
         
         markup.add(telebot.types.InlineKeyboardButton(
             MESSAGES["button_back"],
@@ -209,12 +207,7 @@ def products_by_type_menu(warehouse, branch, product_type):
         
         markup = telebot.types.InlineKeyboardMarkup()
         
-        if not products:
-            markup.add(telebot.types.InlineKeyboardButton(
-                MESSAGES["button_add"],
-                callback_data=f"product_add:{warehouse}:{branch}:{product_type}"
-            ))
-        else:
+        if products:
             for i in range(0, len(products), 2):
                 row = []
                 for j in range(2):
@@ -226,11 +219,12 @@ def products_by_type_menu(warehouse, branch, product_type):
                         ))
                 if row:
                     markup.add(*row)
-            
-            markup.add(telebot.types.InlineKeyboardButton(
-                MESSAGES["button_add"],
-                callback_data=f"product_add:{warehouse}:{branch}:{product_type}"
-            ))
+        
+        # ✅ PLUS TUGMA - MAHSULOT QO'SHISH
+        markup.add(telebot.types.InlineKeyboardButton(
+            MESSAGES["button_add"],
+            callback_data=f"product_add:{warehouse}:{branch}:{product_type}"
+        ))
         
         markup.add(telebot.types.InlineKeyboardButton(
             MESSAGES["button_back"],
