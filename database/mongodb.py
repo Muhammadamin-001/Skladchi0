@@ -347,3 +347,147 @@ def init_db():
 
 def get_db():
     return db_manager
+
+
+# ✅ QO'SHILGAN METODLAR:
+
+def add_warehouse(self, name):
+    """Sklad qo'shish"""
+    try:
+        self.db["warehouses"].insert_one({
+            "name": name,
+            "created_at": datetime.utcnow()
+        })
+        return True
+    except DuplicateKeyError:
+        return False
+
+def get_all_warehouses(self):
+    """Barcha skladlar"""
+    return list(self.db["warehouses"].find({}))
+
+def update_warehouse(self, old_name, new_name):
+    """Skladni tahrirlash"""
+    try:
+        result = self.db["warehouses"].update_one(
+            {"name": old_name},
+            {"$set": {"name": new_name}}
+        )
+        return result.modified_count > 0
+    except DuplicateKeyError:
+        return False
+
+def delete_warehouse(self, name):
+    """Skladni o'chirish"""
+    self.db["warehouses"].delete_one({"name": name})
+
+# BRANCH METODLARIDA warehouse QO'SHISH
+def add_branch(self, name, warehouse):
+    """Filial qo'shish"""
+    try:
+        self.db["branches"].insert_one({
+            "name": name,
+            "warehouse": warehouse,
+            "created_at": datetime.utcnow()
+        })
+        return True
+    except DuplicateKeyError:
+        return False
+
+def get_all_branches(self, warehouse=None):
+    """Filiallar - warehouse bo'yicha filteri"""
+    if warehouse:
+        return list(self.db["branches"].find({"warehouse": warehouse}))
+    return list(self.db["branches"].find({}))
+
+def update_branch(self, old_name, new_name, warehouse):
+    """Filial tahrirlash"""
+    try:
+        result = self.db["branches"].update_one(
+            {"name": old_name, "warehouse": warehouse},
+            {"$set": {"name": new_name}}
+        )
+        return result.modified_count > 0
+    except DuplicateKeyError:
+        return False
+
+def delete_branch(self, name, warehouse):
+    """Filial o'chirish"""
+    self.db["branches"].delete_one({"name": name, "warehouse": warehouse})
+
+# PRODUCT TYPES - WAREHOUSE VA BRANCH BO'YICHA
+def add_product_type(self, name, image_id=None, warehouse=None, branch=None):
+    """Mahsulot turi qo'shish"""
+    try:
+        self.db["product_types"].insert_one({
+            "name": name,
+            "image_id": image_id,
+            "warehouse": warehouse,
+            "branch": branch,
+            "created_at": datetime.utcnow()
+        })
+        return True
+    except DuplicateKeyError:
+        return False
+
+def get_all_product_types(self, warehouse=None, branch=None):
+    """Mahsulot turlari"""
+    query = {}
+    if warehouse:
+        query["warehouse"] = warehouse
+    if branch:
+        query["branch"] = branch
+    return list(self.db["product_types"].find(query))
+
+def get_product_type_by_name(self, name):
+    """Mahsulot turini nomga ko'ra"""
+    return self.db["product_types"].find_one({"name": name})
+
+def update_product_type(self, old_name, new_name, image_id=None):
+    """Mahsulot turini tahrirlash"""
+    try:
+        update_data = {"name": new_name}
+        if image_id:
+            update_data["image_id"] = image_id
+        
+        result = self.db["product_types"].update_one(
+            {"name": old_name},
+            {"$set": update_data}
+        )
+        return result.modified_count > 0
+    except DuplicateKeyError:
+        return False
+
+def delete_product_type(self, name):
+    """Mahsulot turini o'chirish"""
+    self.db["product_types"].delete_one({"name": name})
+
+# PRODUCTS - WAREHOUSE, BRANCH, PRODUCT_TYPE BO'YICHA
+def add_product(self, name, code, product_type, warehouse=None, branch=None):
+    """Mahsulot qo'shish"""
+    try:
+        self.db["products"].insert_one({
+            "name": name,
+            "code": code,
+            "product_type": product_type,
+            "warehouse": warehouse,
+            "branch": branch,
+            "created_at": datetime.utcnow()
+        })
+        return True
+    except DuplicateKeyError:
+        return False
+
+def get_products_by_type(self, warehouse, branch, product_type):
+    """Mahsulotlar turga ko'ra"""
+    return list(self.db["products"].find({
+        "warehouse": warehouse,
+        "branch": branch,
+        "product_type": product_type
+    }).sort("name", 1))
+
+def get_products_by_type_all(self, product_type):
+    """BARCHA mahsulotlar - foydalanuvchi uchun"""
+    return list(self.db["products"].find({
+        "product_type": product_type
+    }).sort("name", 1))
