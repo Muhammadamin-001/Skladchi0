@@ -35,6 +35,15 @@ class MongoDBManager:
         self.db["requests"].create_index("user_id", unique=True)
 
         # Warehouse/branch/type/product unique constraints per kontekst
+        # Legacy tizimlarda branches uchun faqat `name` unique index qolib ketgan bo'lishi mumkin.
+        # Bu holatda turli skladlarda bir xil filial nomi qo'shib bo'lmaydi, shuning uchun tozalaymiz.
+        branch_indexes = self.db["branches"].index_information()
+        for index_name, index_data in branch_indexes.items():
+            if index_name == "_id_":
+                continue
+            if index_data.get("unique") and index_data.get("key") == [("name", 1)]:
+                self.db["branches"].drop_index(index_name)
+
         self.db["warehouses"].create_index([("name", 1)], unique=True)
         self.db["branches"].create_index([("name", 1), ("warehouse", 1)], unique=True)
         self.db["product_types"].create_index([("name", 1), ("warehouse", 1), ("branch", 1)], unique=True)
@@ -241,6 +250,47 @@ class MongoDBManager:
     def get_products_by_type_all(self, product_type):
         return list(self.db["products"].find({"product_type": product_type}).sort("name", 1))
 
+    def get_product_by_name(self, name, warehouse=None, branch=None, product_type=None):
+        query = {"name": name}
+        if warehouse is not None:
+            query["warehouse"] = warehouse
+        if branch is not None:
+            query["branch"] = branch
+        if product_type is not None:
+            query["product_type"] = product_type
+        return self.db["products"].find_one(query)
+
+    def update_product(self, old_name, new_name, new_code, warehouse=None, branch=None, product_type=None):
+        query = {"name": old_name}
+        if warehouse is not None:
+            query["warehouse"] = warehouse
+        if branch is not None:
+            query["branch"] = branch
+        if product_type is not None:
+            query["product_type"] = product_type
+        try:
+            result = self.db["products"].update_one(
+                query,
+                {
+                    "$set": {
+                        "name": new_name,
+                        "code": new_code,
+                    }
+                },
+            )
+            return result.modified_count > 0
+        except DuplicateKeyError:
+            return False
+
+    def delete_product(self, name, warehouse=None, branch=None, product_type=None):
+        query = {"name": name}
+        if warehouse is not None:
+            query["warehouse"] = warehouse
+        if branch is not None:
+            query["branch"] = branch
+        if product_type is not None:
+            query["product_type"] = product_type
+        self.db["products"].delete_one(query)
     # INVENTORY
     
     def get_inventory(self, product_name, branch=WAREHOUSE_NAME):

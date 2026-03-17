@@ -42,6 +42,137 @@ except Exception as e:
 # ==================== USER STATE STORAGE ====================
 user_states = {}
 
+def _show_product_types_message(chat_id, message_id, warehouse, branch):
+    """Mahsulot turlari oynasini rasm bo'lsa caption orqali, bo'lmasa text orqali yangilash"""
+    branch_display = branch if branch != "common" else "🌍 Umumiy Bo'lim"
+    text = f"📦 {branch_display}\n\nMahsulot turini tanlang yoki yangi qo'shish:"
+    markup = product_types_menu(warehouse, branch)
+
+    db = get_db()
+    types = db.get_all_product_types(warehouse, branch)
+    image_id = next((ptype.get("image_id") for ptype in types if ptype.get("image_id")), None)
+
+    if image_id:
+        try:
+            bot.edit_message_caption(
+                caption=text,
+                chat_id=chat_id,
+                message_id=message_id,
+                reply_markup=markup,
+                parse_mode="HTML",
+            )
+            return
+        except Exception:
+            pass
+
+        try:
+            bot.delete_message(chat_id, message_id)
+        except Exception:
+            pass
+
+        bot.send_photo(chat_id, image_id, caption=text, reply_markup=markup, parse_mode="HTML")
+        return
+
+    try:
+        bot.edit_message_text(text, chat_id, message_id, reply_markup=markup, parse_mode="HTML")
+    except Exception:
+        try:
+            bot.edit_message_caption(caption=text, chat_id=chat_id, message_id=message_id, reply_markup=markup, parse_mode="HTML")
+        except Exception:
+            bot.send_message(chat_id, text, reply_markup=markup, parse_mode="HTML")
+
+
+def _show_products_by_type_message(chat_id, message_id, warehouse, branch, product_type):
+    """Mahsulot ro'yxatini tur rasmi bilan doim qayta ko'rsatish"""
+    db = get_db()
+    ptype = db.get_product_type_by_name(product_type, warehouse, branch)
+    text = f"📦 {product_type}\n\nMahsulot tanlang yoki yangi qo'shish:"
+    markup = products_by_type_menu(warehouse, branch, product_type)
+
+    if ptype and ptype.get("image_id"):
+        try:
+            bot.edit_message_media(
+                media=telebot.types.InputMediaPhoto(ptype["image_id"], caption=text, parse_mode="HTML"),
+                chat_id=chat_id,
+                message_id=message_id,
+                reply_markup=markup,
+            )
+            return
+        except Exception:
+            pass
+
+        try:
+            bot.delete_message(chat_id, message_id)
+        except Exception:
+            pass
+
+        bot.send_photo(chat_id, ptype["image_id"], caption=text, reply_markup=markup, parse_mode="HTML")
+        return
+
+    try:
+        bot.edit_message_text(text, chat_id, message_id, reply_markup=markup, parse_mode="HTML")
+    except Exception:
+        try:
+            bot.edit_message_caption(caption=text, chat_id=chat_id, message_id=message_id, reply_markup=markup, parse_mode="HTML")
+        except Exception:
+            bot.send_message(chat_id, text, reply_markup=markup, parse_mode="HTML")
+
+
+def _show_product_details_message(chat_id, message_id, warehouse, branch, product_type, product_name):
+    """Mahsulot detali: yuqorida tur rasmi, pastda nom va amallar"""
+    db = get_db()
+    ptype = db.get_product_type_by_name(product_type, warehouse, branch)
+    product = db.get_product_by_name(product_name, warehouse, branch, product_type)
+    product_code = product.get("code") if product else "-"
+
+    text = (
+        f"📦 <b>{product_name}</b>\n"
+        f"🔢 Kod: <b>{product_code}</b>\n\n"
+        "Amalni tanlang:"
+    )
+
+    markup = telebot.types.InlineKeyboardMarkup()
+    markup.add(
+        telebot.types.InlineKeyboardButton(
+            "✏️ Tahrirlash",
+            callback_data=f"product_edit:{warehouse}:{branch}:{product_type}:{product_name}",
+        ),
+        telebot.types.InlineKeyboardButton(
+            "🗑️ O'chirish",
+            callback_data=f"product_delete:{warehouse}:{branch}:{product_type}:{product_name}",
+        ),
+    )
+    markup.add(
+        telebot.types.InlineKeyboardButton(
+            MESSAGES["button_back"], callback_data=f"product_list_back:{warehouse}:{branch}:{product_type}"
+        )
+    )
+
+    if ptype and ptype.get("image_id"):
+        try:
+            bot.edit_message_media(
+                media=telebot.types.InputMediaPhoto(ptype["image_id"], caption=text, parse_mode="HTML"),
+                chat_id=chat_id,
+                message_id=message_id,
+                reply_markup=markup,
+            )
+            return
+        except Exception:
+            pass
+
+        try:
+            bot.delete_message(chat_id, message_id)
+        except Exception:
+            pass
+        bot.send_photo(chat_id, ptype["image_id"], caption=text, reply_markup=markup, parse_mode="HTML")
+        return
+
+    try:
+        bot.edit_message_text(text, chat_id, message_id, reply_markup=markup, parse_mode="HTML")
+    except Exception:
+        bot.send_message(chat_id, text, reply_markup=markup, parse_mode="HTML")
+        
+        
 # ==================== /START ====================
 
 @bot.message_handler(commands=['start'])
@@ -602,6 +733,47 @@ def handle_product_type_image_no(call):
         reply_markup=product_types_menu(warehouse, branch)
     )
 
+@bot.callback_query_handler(func=lambda call: call.data.startswith("product_type_actions:"))
+def handle_product_type_actions(call):
+    """Mahsulot turi sozlamalari (tahrirlash/o'chirish/back)"""
+    parts = call.data.split(":")
+    warehouse = parts[1]
+    branch = parts[2] if len(parts) > 2 else "common"
+    product_type = parts[3] if len(parts) > 3 else ""
+
+    user_states[call.from_user.id] = {"warehouse": warehouse, "branch": branch, "product_type": product_type}
+
+    text = f"📦 <b>{product_type}</b>\n\nAmalni tanlang:"
+    db = get_db()
+    ptype = db.get_product_type_by_name(product_type, warehouse, branch)
+    markup = product_type_actions_menu(warehouse, branch, product_type)
+
+    if ptype and ptype.get("image_id"):
+        try:
+            bot.edit_message_media(
+                media=telebot.types.InputMediaPhoto(ptype["image_id"], caption=text, parse_mode="HTML"),
+                chat_id=call.message.chat.id,
+                message_id=call.message.message_id,
+                reply_markup=markup,
+            )
+            return
+        except Exception:
+            pass
+
+        try:
+            bot.delete_message(call.message.chat.id, call.message.message_id)
+        except Exception:
+            pass
+
+        bot.send_photo(call.message.chat.id, ptype["image_id"], caption=text, reply_markup=markup, parse_mode="HTML")
+        return
+
+    try:
+        bot.edit_message_text(text, call.message.chat.id, call.message.message_id, reply_markup=markup, parse_mode="HTML")
+    except Exception:
+        bot.send_message(call.message.chat.id, text, reply_markup=markup, parse_mode="HTML")
+
+
 # ✅ PRODUCT TYPE SELECT - MAHSULOTLAR BO'LIMI
 @bot.callback_query_handler(func=lambda call: call.data.startswith("product_type_select:"))
 def handle_product_type_select(call):
@@ -614,37 +786,7 @@ def handle_product_type_select(call):
     user_id = call.from_user.id
     user_states[user_id] = {"warehouse": warehouse, "branch": branch, "product_type": product_type}
     
-    # ✅ RASMI BILAN MAHSULOT TURININI KO'RSATISH
-    db = get_db()
-    ptype = db.get_product_type_by_name(product_type, warehouse, branch)
-    
-    text = f"📦 {product_type}\n\nMahsulot tanlang yoki yangi qo'shish:"
-    
-    if ptype and ptype.get("image_id"):
-        try:
-            bot.delete_message(call.message.chat.id, call.message.message_id)
-            bot.send_photo(
-                call.message.chat.id,
-                ptype["image_id"],
-                caption=text,
-                reply_markup=products_by_type_menu(warehouse, branch, product_type),
-                parse_mode="HTML"
-            )
-        except:
-            bot.send_message(
-                call.message.chat.id,
-                text,
-                reply_markup=products_by_type_menu(warehouse, branch, product_type),
-                parse_mode="HTML"
-            )
-    else:
-        bot.edit_message_text(
-            text,
-            call.message.chat.id,
-            call.message.message_id,
-            reply_markup=products_by_type_menu(warehouse, branch, product_type),
-            parse_mode="HTML"
-        )
+    _show_products_by_type_message(call.message.chat.id, call.message.message_id, warehouse, branch, product_type)
 
 # ✅ PRODUCT TYPE EDIT
 @bot.callback_query_handler(func=lambda call: call.data.startswith("product_type_edit:"))
@@ -973,12 +1115,176 @@ def handle_product_confirm_add(call):
     
     user_states.pop(user_id, None)
     
-    bot.edit_message_text(
-        f"✅ '{data.get('product_name')}' qo'shildi!",
+    _show_products_by_type_message(call.message.chat.id, call.message.message_id, warehouse, branch, product_type)
+
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith("product_select:"))
+def handle_product_select(call):
+    """Mahsulot nomi bosilganda detal oynasi"""
+    parts = call.data.split(":")
+    warehouse = parts[1]
+    branch = parts[2] if len(parts) > 2 else "common"
+    product_type = parts[3] if len(parts) > 3 else ""
+    product_name = parts[4] if len(parts) > 4 else ""
+
+    user_states[call.from_user.id] = {
+        "warehouse": warehouse,
+        "branch": branch,
+        "product_type": product_type,
+        "product_name": product_name,
+    }
+
+    _show_product_details_message(call.message.chat.id, call.message.message_id, warehouse, branch, product_type, product_name)
+
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith("product_edit:"))
+def handle_product_edit(call):
+    """Mahsulotni tahrirlash jarayonini boshlash"""
+    parts = call.data.split(":")
+    warehouse = parts[1]
+    branch = parts[2] if len(parts) > 2 else "common"
+    product_type = parts[3] if len(parts) > 3 else ""
+    product_name = parts[4] if len(parts) > 4 else ""
+
+    user_states[call.from_user.id] = {
+        "action": "editing_product_name",
+        "warehouse": warehouse,
+        "branch": branch,
+        "product_type": product_type,
+        "old_product_name": product_name,
+    }
+
+    bot.send_message(
         call.message.chat.id,
-        call.message.message_id,
-        reply_markup=products_by_type_menu(warehouse, branch, product_type)
+        f"✍️ Yangi mahsulot nomini kiriting:\n\nEski nom: <b>{product_name}</b>",
+        reply_markup=back_button(f"product_select:{warehouse}:{branch}:{product_type}:{product_name}"),
+        parse_mode="HTML",
     )
+
+
+@bot.message_handler(func=lambda message: user_states.get(message.from_user.id, {}).get("action") == "editing_product_name")
+def process_product_edit_name(message):
+    """Mahsulot tahriri uchun yangi nom"""
+    user_id = message.from_user.id
+    data = user_states.get(user_id, {})
+    new_name = message.text.strip()
+
+    if not new_name:
+        bot.send_message(message.chat.id, "❌ Mahsulot nomi bo'sh bo'lishi mumkin emas")
+        return
+
+    data["new_product_name"] = new_name
+    data["action"] = "editing_product_code"
+    user_states[user_id] = data
+
+    bot.send_message(
+        message.chat.id,
+        f"🔢 Yangi mahsulot kodini kiriting:\n\nYangi nom: <b>{new_name}</b>",
+        reply_markup=back_button(
+            f"product_select:{data['warehouse']}:{data['branch']}:{data['product_type']}:{data['old_product_name']}"
+        ),
+        parse_mode="HTML",
+    )
+
+
+@bot.message_handler(func=lambda message: user_states.get(message.from_user.id, {}).get("action") == "editing_product_code")
+def process_product_edit_code(message):
+    """Mahsulot tahriri uchun yangi kod"""
+    user_id = message.from_user.id
+    data = user_states.get(user_id, {})
+    new_code = message.text.strip()
+
+    if not new_code:
+        bot.send_message(message.chat.id, "❌ Mahsulot kodi bo'sh bo'lishi mumkin emas")
+        return
+
+    db = get_db()
+    updated = db.update_product(
+        data.get("old_product_name"),
+        data.get("new_product_name"),
+        new_code,
+        data.get("warehouse"),
+        data.get("branch"),
+        data.get("product_type"),
+    )
+    
+    warehouse = data.get("warehouse")
+    branch = data.get("branch")
+    product_type = data.get("product_type")
+    new_name = data.get("new_product_name")
+
+    user_states.pop(user_id, None)
+
+    if updated:
+        bot.send_message(message.chat.id, "✅ Mahsulot muvaffaqiyatli yangilandi")
+        _show_product_details_message(message.chat.id, message.message_id, warehouse, branch, product_type, new_name)
+    else:
+        bot.send_message(message.chat.id, "❌ Tahrirlashda xatolik (nom/kod band bo'lishi mumkin)")
+
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith("product_delete:"))
+def handle_product_delete(call):
+    """Mahsulotni o'chirishni tasdiqlash oynasi"""
+    parts = call.data.split(":")
+    warehouse = parts[1]
+    branch = parts[2] if len(parts) > 2 else "common"
+    product_type = parts[3] if len(parts) > 3 else ""
+    product_name = parts[4] if len(parts) > 4 else ""
+
+    db = get_db()
+    qty = db.get_inventory(product_name, branch).get("quantity", 0)
+
+    markup = telebot.types.InlineKeyboardMarkup()
+    markup.add(
+        telebot.types.InlineKeyboardButton("✅ Ha", callback_data=f"product_delete_confirm:{warehouse}:{branch}:{product_type}:{product_name}"),
+        telebot.types.InlineKeyboardButton("❌ Yo'q", callback_data=f"product_delete_cancel:{warehouse}:{branch}:{product_type}:{product_name}"),
+    )
+
+    text = f"⚠️ <b>{product_name}</b> o'chirilsinmi?\n\nSkladdagi qoldiq: <b>{qty}</b>"
+    db_ptype = db.get_product_type_by_name(product_type, warehouse, branch)
+
+    if db_ptype and db_ptype.get("image_id"):
+        try:
+            bot.edit_message_media(
+                media=telebot.types.InputMediaPhoto(db_ptype["image_id"], caption=text, parse_mode="HTML"),
+                chat_id=call.message.chat.id,
+                message_id=call.message.message_id,
+                reply_markup=markup,
+            )
+            return
+        except Exception:
+            pass
+
+    try:
+        bot.edit_message_text(text, call.message.chat.id, call.message.message_id, reply_markup=markup, parse_mode="HTML")
+    except Exception:
+        bot.send_message(call.message.chat.id, text, reply_markup=markup, parse_mode="HTML")
+
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith("product_delete_confirm:"))
+def handle_product_delete_confirm(call):
+    """Mahsulotni tasdiqlab o'chirish"""
+    parts = call.data.split(":")
+    warehouse = parts[1]
+    branch = parts[2] if len(parts) > 2 else "common"
+    product_type = parts[3] if len(parts) > 3 else ""
+    product_name = parts[4] if len(parts) > 4 else ""
+
+    db = get_db()
+    db.delete_product(product_name, warehouse, branch, product_type)
+
+    _show_products_by_type_message(call.message.chat.id, call.message.message_id, warehouse, branch, product_type)
+
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith("product_delete_cancel:"))
+def handle_product_delete_cancel(call):
+    """Mahsulotni o'chirish bekor qilindi"""
+    parts = call.data.split(":")
+    warehouse = parts[1]
+    branch = parts[2] if len(parts) > 2 else "common"
+    product_type = parts[3] if len(parts) > 3 else ""
+
+    _show_products_by_type_message(call.message.chat.id, call.message.message_id, warehouse, branch, product_type)
 
 # ==================== BACK HANDLERS ====================
 
@@ -1020,15 +1326,39 @@ def handle_product_type_back(call):
     user_id = call.from_user.id
     user_states.pop(user_id, None)
     
-    branch_display = branch if branch != "common" else "🌍 Umumiy Bo'lim"
-    
-    bot.edit_message_text(
-        f"📦 {branch_display}\n\nMahsulot turini tanlang yoki yangi qo'shish:",
-        call.message.chat.id,
-        call.message.message_id,
-        reply_markup=product_types_menu(warehouse, branch),
-        parse_mode="HTML"
-    )
+    _show_product_types_message(call.message.chat.id, call.message.message_id, warehouse, branch)
+
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith("product_list_back:"))
+def handle_product_list_back(call):
+    """Mahsulot detal oynasidan ro'yxatga qaytish"""
+    parts = call.data.split(":")
+    warehouse = parts[1]
+    branch = parts[2] if len(parts) > 2 else "common"
+    product_type = parts[3] if len(parts) > 3 else ""
+
+    user_states.pop(call.from_user.id, None)
+    _show_products_by_type_message(call.message.chat.id, call.message.message_id, warehouse, branch, product_type)
+
+
+@bot.callback_query_handler(func=lambda call: call.data == "product_type_image_cancel")
+def handle_product_type_image_cancel(call):
+    """Tur qo'shishda rasm yuborishni bekor qilish"""
+    data = user_states.get(call.from_user.id, {})
+    warehouse = data.get("warehouse")
+    branch = data.get("branch", "common")
+    user_states.pop(call.from_user.id, None)
+    _show_product_types_message(call.message.chat.id, call.message.message_id, warehouse, branch)
+
+
+@bot.callback_query_handler(func=lambda call: call.data == "product_type_cancel_edit")
+def handle_product_type_cancel_edit(call):
+    """Tur tahrirlashda rasm bosqichini bekor qilish"""
+    data = user_states.get(call.from_user.id, {})
+    warehouse = data.get("warehouse")
+    branch = data.get("branch", "common")
+    user_states.pop(call.from_user.id, None)
+    _show_product_types_message(call.message.chat.id, call.message.message_id, warehouse, branch)
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("product_branch_back:"))
 def handle_product_branch_back(call):
@@ -1037,13 +1367,25 @@ def handle_product_branch_back(call):
     user_id = call.from_user.id
     user_states.pop(user_id, None)
     
-    bot.edit_message_text(
-        "🏢 Filial tanlang yoki Umumiy:",
-        call.message.chat.id,
-        call.message.message_id,
-        reply_markup=branches_selection_menu(warehouse),
-        parse_mode="HTML"
-    )
+    try:
+        bot.edit_message_text(
+            "🏢 Filial tanlang yoki Umumiy:",
+            call.message.chat.id,
+            call.message.message_id,
+            reply_markup=branches_selection_menu(warehouse),
+            parse_mode="HTML"
+        )
+    except Exception:
+        try:
+            bot.delete_message(call.message.chat.id, call.message.message_id)
+        except Exception:
+            pass
+        bot.send_message(
+            call.message.chat.id,
+            "🏢 Filial tanlang yoki Umumiy:",
+            reply_markup=branches_selection_menu(warehouse),
+            parse_mode="HTML"
+        )
 
 # ==================== REQUEST HANDLERS ====================
 
