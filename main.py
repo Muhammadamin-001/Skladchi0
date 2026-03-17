@@ -476,7 +476,11 @@ def handle_product_type_add(call):
     except:
         pass
     
-    user_states[user_id] = "waiting_product_type_name"
+    user_states[user_id] = {
+        "action": "waiting_product_type_name",
+        "warehouse": warehouse,
+        "branch": branch
+    }
     
     bot.send_message(
         call.message.chat.id,
@@ -484,16 +488,16 @@ def handle_product_type_add(call):
         reply_markup=back_button(f"product_branch_select:{warehouse}:{branch}")
     )
 
-@bot.message_handler(func=lambda message: user_states.get(message.from_user.id) == "waiting_product_type_name")
+@bot.message_handler(func=lambda message: user_states.get(message.from_user.id, {}).get("action") == "waiting_product_type_name")
 def process_product_type_add(message):
     """Mahsulot turi nomini saqlash"""
     user_id = message.from_user.id
     name = message.text.strip()
     
-    current_state = user_states.get(user_id)
+    current_state = user_states.get(user_id, {})
     logger.info(f"🔴 PRODUCT TYPE MESSAGE: user_id={user_id}, text='{name}', state={current_state}")
     
-    if current_state != "waiting_product_type_name":
+    if current_state.get("action") != "waiting_product_type_name":
         logger.warning(f"❌ State mismatch")
         bot.send_message(message.chat.id, "❌ Avval /start bosing")
         return
@@ -505,7 +509,9 @@ def process_product_type_add(message):
     # ✅ RASM KERAK MI DEB SO'RASH!
     user_states[user_id] = {
         "action": "adding_product_type",
-        "product_type_name": name
+        "product_type_name": name,
+        "warehouse": current_state.get("warehouse"),
+        "branch": current_state.get("branch", "common")
     }
     
     markup = telebot.types.InlineKeyboardMarkup()
@@ -525,6 +531,10 @@ def process_product_type_add(message):
 def handle_product_type_image_yes(call):
     """Rasm yuklash kerak"""
     user_id = call.from_user.id
+    if user_id not in user_states or not isinstance(user_states[user_id], dict):
+        bot.answer_callback_query(call.id, "Holat topilmadi, qayta urinib ko'ring", show_alert=True)
+        return
+
     user_states[user_id]["action"] = "uploading_product_type_image"
     
     bot.send_message(
@@ -542,7 +552,12 @@ def process_product_type_image(message):
     image_id = message.photo[-1].file_id
     
     db = get_db()
-    db.add_product_type(data.get("product_type_name"), image_id)
+    db.add_product_type(
+        data.get("product_type_name"),
+        image_id,
+        data.get("warehouse"),
+        data.get("branch", "common")
+    )
     
     logger.info(f"✅ Product type saved with image: '{data.get('product_type_name')}'")
     
@@ -566,7 +581,12 @@ def handle_product_type_image_no(call):
     data = user_states.get(user_id, {})
     
     db = get_db()
-    db.add_product_type(data.get("product_type_name"))
+    db.add_product_type(
+        data.get("product_type_name"),
+        None,
+        data.get("warehouse"),
+        data.get("branch", "common")
+    )
     
     logger.info(f"✅ Product type saved without image: '{data.get('product_type_name')}'")
     
@@ -596,7 +616,7 @@ def handle_product_type_select(call):
     
     # ✅ RASMI BILAN MAHSULOT TURININI KO'RSATISH
     db = get_db()
-    ptype = db.get_product_type_by_name(product_type)
+    ptype = db.get_product_type_by_name(product_type, warehouse, branch)
     
     text = f"📦 {product_type}\n\nMahsulot tanlang yoki yangi qo'shish:"
     
@@ -664,7 +684,7 @@ def process_product_type_edit(message):
         return
     
     db = get_db()
-    ptype = db.get_product_type_by_name(old_name)
+    ptype = db.get_product_type_by_name(old_name, warehouse, branch)
     
     if ptype and ptype.get("image_id"):
         # ✅ RASM MAVJUD - YANGILAYSIZMI DEB SO'RASH
@@ -722,7 +742,13 @@ def process_product_type_new_image(message):
     image_id = message.photo[-1].file_id
     
     db = get_db()
-    db.update_product_type(data.get("old_name"), data.get("new_name"), image_id)
+    db.update_product_type(
+        data.get("old_name"),
+        data.get("new_name"),
+        image_id,
+        data.get("warehouse"),
+        data.get("branch")
+    )
     
     warehouse = data.get("warehouse")
     branch = data.get("branch")
@@ -742,7 +768,13 @@ def handle_product_type_update_image_no(call):
     data = user_states.get(user_id, {})
     
     db = get_db()
-    db.update_product_type(data.get("old_name"), data.get("new_name"))
+    db.update_product_type(
+        data.get("old_name"),
+        data.get("new_name"),
+        None,
+        data.get("warehouse"),
+        data.get("branch")
+    )
     
     warehouse = data.get("warehouse")
     branch = data.get("branch")
@@ -777,7 +809,13 @@ def process_product_type_add_image(message):
     image_id = message.photo[-1].file_id
     
     db = get_db()
-    db.update_product_type(data.get("old_name"), data.get("new_name"), image_id)
+    db.update_product_type(
+        data.get("old_name"),
+        data.get("new_name"),
+        image_id,
+        data.get("warehouse"),
+        data.get("branch")
+    )
     
     warehouse = data.get("warehouse")
     branch = data.get("branch")
@@ -797,7 +835,13 @@ def handle_product_type_add_image_no(call):
     data = user_states.get(user_id, {})
     
     db = get_db()
-    db.update_product_type(data.get("old_name"), data.get("new_name"))
+    db.update_product_type(
+        data.get("old_name"),
+        data.get("new_name"),
+        None,
+        data.get("warehouse"),
+        data.get("branch")
+    )
     
     warehouse = data.get("warehouse")
     branch = data.get("branch")
@@ -824,7 +868,7 @@ def handle_product_type_delete(call):
     user_states.pop(user_id, None)
     
     db = get_db()
-    db.delete_product_type(product_type)
+    db.delete_product_type(product_type, warehouse, branch)
     
     bot.edit_message_text(
         f"🗑️ '{product_type}' turi o'chirildi",
