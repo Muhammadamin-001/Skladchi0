@@ -1137,8 +1137,9 @@ def process_product_code(message):
 def handle_product_image_yes(call):
     """Mahsulot rasmi yuklash bosqichi"""
     user_id = call.from_user.id
+    bot.delete_message(call.message.chat.id, call.message.message_id)
     data = user_states.get(user_id, {})
-
+    
     if data.get("action") != "awaiting_product_image_decision":
         bot.answer_callback_query(call.id, "Holat topilmadi", show_alert=True)
         return
@@ -1157,6 +1158,7 @@ def handle_product_image_yes(call):
 def handle_product_image_no(call):
     """Mahsulotni rasmsiz davom ettirish"""
     user_id = call.from_user.id
+    bot.delete_message(call.message.chat.id, call.message.message_id)
     data = user_states.get(user_id, {})
 
     if data.get("action") != "awaiting_product_image_decision":
