@@ -42,6 +42,15 @@ except Exception as e:
 # ==================== USER STATE STORAGE ====================
 user_states = {}
 
+def _get_product_display_image(product=None, product_type=None):
+    """Mahsulot rasmi bo'lsa o'shani, bo'lmasa tur rasmini qaytaradi."""
+    if product and product.get("image_id"):
+        return product["image_id"]
+    if product_type and product_type.get("image_id"):
+        return product_type["image_id"]
+    return None
+
+
 def _show_product_types_message(chat_id, message_id, warehouse, branch):
     """Mahsulot turlari oynasini rasm bo'lsa caption orqali, bo'lmasa text orqali yangilash"""
     branch_display = branch if branch != "common" else "🌍 Umumiy Bo'lim"
@@ -148,10 +157,12 @@ def _show_product_details_message(chat_id, message_id, warehouse, branch, produc
         )
     )
 
-    if ptype and ptype.get("image_id"):
+    image_id = _get_product_display_image(product, ptype)
+
+    if image_id:
         try:
             bot.edit_message_media(
-                media=telebot.types.InputMediaPhoto(ptype["image_id"], caption=text, parse_mode="HTML"),
+                media=telebot.types.InputMediaPhoto(image_id, caption=text, parse_mode="HTML"),
                 chat_id=chat_id,
                 message_id=message_id,
                 reply_markup=markup,
@@ -164,7 +175,7 @@ def _show_product_details_message(chat_id, message_id, warehouse, branch, produc
             bot.delete_message(chat_id, message_id)
         except Exception:
             pass
-        bot.send_photo(chat_id, ptype["image_id"], caption=text, reply_markup=markup, parse_mode="HTML")
+        bot.send_photo(chat_id, image_id, caption=text, reply_markup=markup, parse_mode="HTML")
         return
 
     try:
@@ -1065,6 +1076,23 @@ def process_product_add_name(message):
         parse_mode="HTML"
     )
 
+def _show_product_add_confirmation(chat_id, data):
+    """Mahsulot qo'shish yakuniy tasdiqlash oynasi"""
+    markup = telebot.types.InlineKeyboardMarkup()
+    markup.add(
+        telebot.types.InlineKeyboardButton("✅ Tasdiq", callback_data="product_confirm_add"),
+        telebot.types.InlineKeyboardButton("❌ Bekor", callback_data=f"product_type_back:{data['warehouse']}:{data['branch']}")
+    )
+
+    image_status = "✅ Bor" if data.get("product_image_id") else "❌ Yo'q"
+    bot.send_message(
+        chat_id,
+        f"✅ Tasdiqlansinmi?\n\n📦 <b>{data['product_name']}</b>\n🔢 Kod: <b>{data['product_code']}</b>\n🖼️ Rasm: <b>{image_status}</b>",
+        reply_markup=markup,
+        parse_mode="HTML"
+    )
+
+
 @bot.message_handler(func=lambda message: user_states.get(message.from_user.id, {}).get("action") == "adding_product_code")
 def process_product_code(message):
     """Mahsulot kodini qabul qilish"""
@@ -1078,21 +1106,83 @@ def process_product_code(message):
         return
     
     data["product_code"] = code
-    data["action"] = "added_product_confirm"
+    db = get_db()
+    ptype = db.get_product_type_by_name(data.get("product_type"), data.get("warehouse"), data.get("branch"))
+
+    if ptype and ptype.get("image_id"):
+       data["product_image_id"] = None
+       data["action"] = "added_product_confirm"
+       user_states[user_id] = data
+       _show_product_add_confirmation(message.chat.id, data)
+       return
+
+    data["action"] = "awaiting_product_image_decision"
     user_states[user_id] = data
     
     markup = telebot.types.InlineKeyboardMarkup()
     markup.add(
-        telebot.types.InlineKeyboardButton("✅ Tasdiq", callback_data="product_confirm_add"),
-        telebot.types.InlineKeyboardButton("❌ Bekor", callback_data=f"product_type_back:{data['warehouse']}:{data['branch']}")
+        telebot.types.InlineKeyboardButton("✅ Ha", callback_data="product_image_yes"),
+        telebot.types.InlineKeyboardButton("❌ Yo'q", callback_data="product_image_no")
     )
     
     bot.send_message(
         message.chat.id,
-        f"✅ Tasdiqlansinmi?\n\n📦 <b>{data['product_name']}</b>\n🔢 Kod: <b>{code}</b>",
+        f"📦 <b>{data['product_name']}</b>\n🔢 Kod: <b>{code}</b>\n\n🖼️ Bu mahsulot uchun rasm yuborasizmi?",
         reply_markup=markup,
         parse_mode="HTML"
     )
+
+
+@bot.callback_query_handler(func=lambda call: call.data == "product_image_yes")
+def handle_product_image_yes(call):
+    """Mahsulot rasmi yuklash bosqichi"""
+    user_id = call.from_user.id
+    data = user_states.get(user_id, {})
+
+    if data.get("action") != "awaiting_product_image_decision":
+        bot.answer_callback_query(call.id, "Holat topilmadi", show_alert=True)
+        return
+
+    data["action"] = "uploading_product_image"
+    user_states[user_id] = data
+
+    bot.send_message(
+        call.message.chat.id,
+        MESSAGES["product_send_image"],
+        reply_markup=back_button(f"product_type_back:{data['warehouse']}:{data['branch']}")
+    )
+
+
+@bot.callback_query_handler(func=lambda call: call.data == "product_image_no")
+def handle_product_image_no(call):
+    """Mahsulotni rasmsiz davom ettirish"""
+    user_id = call.from_user.id
+    data = user_states.get(user_id, {})
+
+    if data.get("action") != "awaiting_product_image_decision":
+        bot.answer_callback_query(call.id, "Holat topilmadi", show_alert=True)
+        return
+
+    data["product_image_id"] = None
+    data["action"] = "added_product_confirm"
+    user_states[user_id] = data
+
+    _show_product_add_confirmation(call.message.chat.id, data)
+
+
+@bot.message_handler(content_types=['photo'], func=lambda message: user_states.get(message.from_user.id, {}).get("action") == "uploading_product_image")
+def process_product_image(message):
+    """Mahsulot rasmi qabul qilish"""
+    user_id = message.from_user.id
+    data = user_states.get(user_id, {})
+
+    data["product_image_id"] = message.photo[-1].file_id
+    data["action"] = "added_product_confirm"
+    user_states[user_id] = data
+
+    _show_product_add_confirmation(message.chat.id, data)
+
+
 
 @bot.callback_query_handler(func=lambda call: call.data == "product_confirm_add")
 def handle_product_confirm_add(call):
@@ -1106,7 +1196,8 @@ def handle_product_confirm_add(call):
         data.get("product_code"),
         data.get("product_type"),
         data.get("warehouse"),
-        data.get("branch")
+        data.get("branch"),
+        data.get("product_image_id")
     )
     
     warehouse = data.get("warehouse")
@@ -1242,11 +1333,13 @@ def handle_product_delete(call):
 
     text = f"⚠️ <b>{product_name}</b> o'chirilsinmi?\n\nSkladdagi qoldiq: <b>{qty}</b>"
     db_ptype = db.get_product_type_by_name(product_type, warehouse, branch)
+    product = db.get_product_by_name(product_name, warehouse, branch, product_type)
+    image_id = _get_product_display_image(product, db_ptype)
 
-    if db_ptype and db_ptype.get("image_id"):
+    if image_id:
         try:
             bot.edit_message_media(
-                media=telebot.types.InputMediaPhoto(db_ptype["image_id"], caption=text, parse_mode="HTML"),
+                media=telebot.types.InputMediaPhoto(image_id, caption=text, parse_mode="HTML"),
                 chat_id=call.message.chat.id,
                 message_id=call.message.message_id,
                 reply_markup=markup,

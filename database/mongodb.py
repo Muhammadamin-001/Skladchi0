@@ -224,7 +224,7 @@ class MongoDBManager:
         )
 
     # PRODUCTS
-    def add_product(self, name, code, product_type, warehouse=None, branch=None):
+    def add_product(self, name, code, product_type, warehouse=None, branch=None, image_id=None):
         try:
             self.db["products"].insert_one(
                 {
@@ -233,6 +233,7 @@ class MongoDBManager:
                     "product_type": product_type,
                     "warehouse": warehouse,
                     "branch": branch,
+                    "image_id": image_id,
                     "created_at": datetime.utcnow(),
                 }
             )
@@ -260,7 +261,7 @@ class MongoDBManager:
             query["product_type"] = product_type
         return self.db["products"].find_one(query)
 
-    def update_product(self, old_name, new_name, new_code, warehouse=None, branch=None, product_type=None):
+    def update_product(self, old_name, new_name, new_code, warehouse=None, branch=None, product_type=None, image_id=None):
         query = {"name": old_name}
         if warehouse is not None:
             query["warehouse"] = warehouse
@@ -269,13 +270,17 @@ class MongoDBManager:
         if product_type is not None:
             query["product_type"] = product_type
         try:
+            update_data = {
+               "name": new_name,
+               "code": new_code,
+           }
+            if image_id is not None:
+               update_data["image_id"] = image_id
+               
             result = self.db["products"].update_one(
                 query,
                 {
-                    "$set": {
-                        "name": new_name,
-                        "code": new_code,
-                    }
+                "$set": update_data
                 },
             )
             return result.modified_count > 0
