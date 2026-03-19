@@ -395,12 +395,21 @@ def remove_description_menu(warehouse, branch, product_type, product_name, quant
     ))
     return markup
 
+def input_quantity_back_menu(warehouse, branch, product_type):
+    """Kiritish miqdori oynasi uchun ortga tugmasi"""
+    markup = telebot.types.InlineKeyboardMarkup()
+    markup.add(telebot.types.InlineKeyboardButton(
+        MESSAGES["button_back"],
+        callback_data=f"user_input_products:{warehouse}:{branch}:{product_type}"
+    ))
+    return markup
+
 def remove_quantity_back_menu(warehouse, branch, product_type):
     """Chiqarish miqdori oynasi uchun ortga tugmasi"""
     markup = telebot.types.InlineKeyboardMarkup()
     markup.add(telebot.types.InlineKeyboardButton(
         MESSAGES["button_back"],
-        callback_data=f"user_remove_types:{warehouse}:{branch}:{product_type}"
+        callback_data=f"user_remove_products:{warehouse}:{branch}:{product_type}"
     ))
     return markup
 

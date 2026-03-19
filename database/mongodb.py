@@ -338,7 +338,6 @@ class MongoDBManager:
         query = self._inventory_query(product_name, warehouse, branch, product_type)
         
         self.db["inventory"].update_one(
-            {"product_name": product_name, "branch": WAREHOUSE_NAME},
             query,
             {
                 "$set": {
@@ -361,7 +360,6 @@ class MongoDBManager:
         query = self._inventory_query(product_name, warehouse, branch, product_type)
             
         self.db["inventory"].update_one(
-            {"product_name": product_name, "branch": WAREHOUSE_NAME},
             query,
             {
                 "$set": {

@@ -23,6 +23,7 @@ from keyboards.telebot_keyboards import (
     branches_menu_user,
     remove_description_menu,
     remove_quantity_back_menu,
+    input_quantity_back_menu,
     list_branches_menu
 )
 
@@ -1719,6 +1720,18 @@ def handle_user_remove_branches_back(call):
     bot.answer_callback_query(call.id)
     _show_user_branches(call.message.chat.id, warehouse, "remove", call.message.message_id)
 
+@bot.callback_query_handler(func=lambda call: call.data.startswith("user_input_products:"))
+def handle_user_input_products_back(call):
+    _, warehouse, branch, product_type_name = call.data.split(":", 3)
+    bot.answer_callback_query(call.id)
+    _show_user_products(call.message.chat.id, warehouse, branch, product_type_name, "input", call.message.message_id)
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith("user_remove_products:"))
+def handle_user_remove_products_back(call):
+    _, warehouse, branch, product_type_name = call.data.split(":", 3)
+    bot.answer_callback_query(call.id)
+    _show_user_products(call.message.chat.id, warehouse, branch, product_type_name, "remove", call.message.message_id)
+
 @bot.callback_query_handler(func=lambda call: call.data.startswith("user_input_branch:"))
 def handle_user_input_branch(call):
     _, warehouse, branch = call.data.split(":", 2)
@@ -1775,7 +1788,12 @@ def handle_user_input_product(call):
         bot.delete_message(call.message.chat.id, call.message.message_id)
     except Exception:
         pass
-    prompt_message_id = _show_message_with_optional_photo(call.message.chat.id, text, image_id=image_id)
+    prompt_message_id = _show_message_with_optional_photo(
+        call.message.chat.id,
+        text,
+        markup=input_quantity_back_menu(warehouse, branch, product_type_name),
+        image_id=image_id,
+    )
     _set_user_state(
         call.from_user.id,
         warehouse=warehouse,
