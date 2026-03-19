@@ -1605,6 +1605,26 @@ def _show_user_products(chat_id, warehouse, branch, product_type_name, action, m
         message_id=message_id,
     )
 
+def _show_user_input_prompt(chat_id, warehouse, branch, product_type_name, product_name):
+    db = get_db()
+    ptype = db.get_product_type_by_name(product_type_name, warehouse, branch)
+    product = db.get_product_by_name(product_name, warehouse, branch, product_type_name)
+    qty = db.get_inventory(product_name, warehouse, branch, product_type_name).get("quantity", 0)
+    image_id = _get_user_flow_image(product, ptype)
+    text = (
+        f"📦 <b>{product_name}</b>\n"
+        f"{_branch_title(branch)}\n"
+        f"📊 Skladda bor: <b>{qty}</b> dona\n\n"
+        "Kiritiladigan miqdorni yuboring:"
+    )
+    sent_id = _show_message_with_optional_photo(
+        chat_id,
+        text,
+        markup=input_quantity_back_menu(warehouse, branch, product_type_name),
+        image_id=image_id,
+    )
+    return sent_id, qty
+
 def _show_user_remove_prompt(chat_id, warehouse, branch, product_type_name, product_name):
     db = get_db()
     ptype = db.get_product_type_by_name(product_type_name, warehouse, branch)
@@ -1787,24 +1807,9 @@ def handle_user_remove_type(call):
 @bot.callback_query_handler(func=lambda call: call.data.startswith("user_input_product:"))
 def handle_user_input_product(call):
     _, warehouse, branch, product_type_name, product_name = call.data.split(":", 4)
-    db = get_db()
-    ptype = db.get_product_type_by_name(product_type_name, warehouse, branch)
-    product = db.get_product_by_name(product_name, warehouse, branch, product_type_name)
-    image_id = _get_user_flow_image(product, ptype)
-    text = (
-        f"📦 <b>{product_name}</b>\n"
-        f"{_branch_title(branch)}\n\n"
-        "Kiritiladigan miqdorni yuboring:"
-    )
-    try:
-        bot.delete_message(call.message.chat.id, call.message.message_id)
-    except Exception:
-        pass
-    prompt_message_id = _show_message_with_optional_photo(
-        call.message.chat.id,
-        text,
-        markup=input_quantity_back_menu(warehouse, branch, product_type_name),
-        image_id=image_id,
+    _clear_message_buttons(call.message.chat.id, call.message.message_id)
+    prompt_message_id, available_qty = _show_user_input_prompt(
+       call.message.chat.id, warehouse, branch, product_type_name, product_name
     )
     _set_user_state(
         call.from_user.id,
@@ -1814,6 +1819,8 @@ def handle_user_input_product(call):
         product_name=product_name,
         action="user_input_quantity",
         prompt_message_id=prompt_message_id,
+        available_quantity=available_qty,
+        menu_message_id=call.message.message_id,
     )
     bot.answer_callback_query(call.id)
 
