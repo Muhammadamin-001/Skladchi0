@@ -1628,7 +1628,7 @@ def _send_user_input_result(chat_id, warehouse, branch, product_type_name, produ
     return _show_message_with_optional_photo(
         chat_id,
         text,
-        markup=products_by_type_menu_user(warehouse, branch, product_type_name, "input", include_back=False),
+        markup=products_by_type_menu_user(warehouse, branch, product_type_name, "input"),
         image_id=image_id,
     )
 
@@ -1647,7 +1647,7 @@ def _send_user_remove_result(chat_id, warehouse, branch, product_type_name, prod
     return _show_message_with_optional_photo(
         chat_id,
         text,
-        markup=products_by_type_menu_user(warehouse, branch, product_type_name, "remove", include_back=False),
+        markup=products_by_type_menu_user(warehouse, branch, product_type_name, "remove"),
         image_id=image_id,
     )
 
