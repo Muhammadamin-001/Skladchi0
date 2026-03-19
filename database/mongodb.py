@@ -48,7 +48,18 @@ class MongoDBManager:
         self.db["branches"].create_index([("name", 1), ("warehouse", 1)], unique=True)
         self.db["product_types"].create_index([("name", 1), ("warehouse", 1), ("branch", 1)], unique=True)
         self.db["products"].create_index([("name", 1), ("warehouse", 1), ("branch", 1), ("product_type", 1)], unique=True)
-        self.db["inventory"].create_index([("product_name", 1), ("branch", 1)], unique=True)
+        inventory_indexes = self.db["inventory"].index_information()
+        for index_name, index_data in inventory_indexes.items():
+            if index_name == "_id_":
+                continue
+            if index_data.get("unique") and index_data.get("key") == [("product_name", 1), ("branch", 1)]:
+                self.db["inventory"].drop_index(index_name)
+
+        self.db["inventory"].create_index(
+            [("product_name", 1), ("warehouse", 1), ("branch", 1), ("product_type", 1)],
+            unique=True,
+        )
+
 
     # ==================== USERS ====================
     
@@ -298,25 +309,40 @@ class MongoDBManager:
         self.db["products"].delete_one(query)
     # INVENTORY
     
-    def get_inventory(self, product_name, branch=WAREHOUSE_NAME):
-        result = self.db["inventory"].find_one({"product_name": product_name, "branch": branch})
-        return result if result else {"quantity": 0}
+    def _inventory_query(self, product_name, warehouse=None, branch=WAREHOUSE_NAME, product_type=None):
+       query = {"product_name": product_name, "branch": branch}
+       if warehouse is not None:
+           query["warehouse"] = warehouse
+       if product_type is not None:
+           query["product_type"] = product_type
+       return query
 
-    def get_inventory_by_branch(self, branch):
-        return list(self.db["inventory"].find({"branch": branch}))
+    def get_inventory(self, product_name, warehouse=None, branch=WAREHOUSE_NAME, product_type=None):
+       result = self.db["inventory"].find_one(
+           self._inventory_query(product_name, warehouse, branch, product_type)
+       )
+       return result if result else {"quantity": 0}
 
-    def get_total_inventory_by_product(self, product_name):
-        return self.get_inventory(product_name, WAREHOUSE_NAME)
+    def get_inventory_by_branch(self, warehouse=None, branch=WAREHOUSE_NAME):
+        query = {"branch": branch}
+        if warehouse is not None:
+            query["warehouse"] = warehouse
+        return list(self.db["inventory"].find(query).sort("product_name", 1))
 
-    def add_inventory(self, product_name, quantity):
-        current = self.get_inventory(product_name, WAREHOUSE_NAME)
+    def get_total_inventory_by_product(self, product_name, warehouse=None, product_type=None):
+        return self.get_inventory(product_name, warehouse, WAREHOUSE_NAME, product_type)
+
+    def add_inventory(self, product_name, quantity, warehouse=None, branch=WAREHOUSE_NAME, product_type=None):
+        current = self.get_inventory(product_name, warehouse, branch, product_type)
         new_quantity = current.get("quantity", 0) + quantity
+        query = self._inventory_query(product_name, warehouse, branch, product_type)
+        
         self.db["inventory"].update_one(
             {"product_name": product_name, "branch": WAREHOUSE_NAME},
+            query,
             {
                 "$set": {
-                    "product_name": product_name,
-                    "branch": WAREHOUSE_NAME,
+                    **query,
                     "quantity": new_quantity,
                     "updated_at": datetime.utcnow(),
                 }
@@ -325,20 +351,21 @@ class MongoDBManager:
         )
         return new_quantity
 
-    def remove_inventory(self, product_name, quantity):
-        current = self.get_inventory(product_name, WAREHOUSE_NAME)
+    def remove_inventory(self, product_name, quantity, warehouse=None, branch=WAREHOUSE_NAME, product_type=None):
+        current = self.get_inventory(product_name, warehouse, branch, product_type)
         current_qty = current.get("quantity", 0)
         if quantity > current_qty:
             return None
 
-            new_quantity = current_qty - quantity
+        new_quantity = current_qty - quantity
+        query = self._inventory_query(product_name, warehouse, branch, product_type)
             
         self.db["inventory"].update_one(
             {"product_name": product_name, "branch": WAREHOUSE_NAME},
+            query,
             {
                 "$set": {
-                    "product_name": product_name,
-                    "branch": WAREHOUSE_NAME,
+                    **query,
                     "quantity": new_quantity,
                     "updated_at": datetime.utcnow(),
                 }

@@ -17,9 +17,12 @@ from keyboards.telebot_keyboards import (
     branches_selection_menu,
     user_main_menu,
     user_request_menu,
+    user_warehouse_menu,
     product_types_menu_user,
     products_by_type_menu_user,
     branches_menu_user,
+    remove_description_menu,
+    remove_quantity_back_menu,
     list_branches_menu
 )
 
@@ -209,7 +212,11 @@ def handle_start(message):
             reply_markup=warehouse_list_menu()
         )
     elif user and user.get("approved"):
-        bot.send_message(user_id, MESSAGES["start_user_approved"].format(first_name), reply_markup=user_main_menu())
+        bot.send_message(
+            user_id,
+            f"👋 Salom, {first_name}!\n\nAvval skladni tanlang:",
+            reply_markup=user_warehouse_menu(),
+        )
     else:
         if not user:
             db.add_user(user_id, username, first_name, approved=False)
@@ -1325,7 +1332,7 @@ def handle_product_delete(call):
     product_name = parts[4] if len(parts) > 4 else ""
 
     db = get_db()
-    qty = db.get_inventory(product_name, branch).get("quantity", 0)
+    qty = db.get_inventory(product_name, warehouse, branch, product_type).get("quantity", 0)
 
     markup = telebot.types.InlineKeyboardMarkup()
     markup.add(
@@ -1482,6 +1489,507 @@ def handle_product_branch_back(call):
             parse_mode="HTML"
         )
 
+# ==================== USER FLOW HELPERS ====================
+
+def _user_state(user_id):
+    state = user_states.get(user_id)
+    return state if isinstance(state, dict) else {}
+
+def _set_user_state(user_id, **kwargs):
+    state = _user_state(user_id).copy()
+    state.update(kwargs)
+    user_states[user_id] = state
+    return state
+
+def _clear_user_action(user_id):
+    state = _user_state(user_id).copy()
+    warehouse = state.get("warehouse")
+    user_states[user_id] = {"warehouse": warehouse} if warehouse else {}
+
+def _branch_title(branch):
+    return "🌍 Umumiy bo'lim" if branch == "common" else f"🏢 {branch}"
+
+def _get_user_flow_image(product, product_type):
+    if product_type and product_type.get("image_id"):
+        return product_type["image_id"]
+    if product and product.get("image_id"):
+        return product["image_id"]
+    return None
+
+def _show_message_with_optional_photo(chat_id, text, markup=None, image_id=None, message_id=None, parse_mode="HTML"):
+    if image_id:
+        if message_id:
+            try:
+                bot.edit_message_media(
+                    media=telebot.types.InputMediaPhoto(image_id, caption=text, parse_mode=parse_mode),
+                    chat_id=chat_id,
+                    message_id=message_id,
+                    reply_markup=markup,
+                )
+                return message_id
+            except Exception:
+                try:
+                    bot.delete_message(chat_id, message_id)
+                except Exception:
+                    pass
+        sent = bot.send_photo(chat_id, image_id, caption=text, reply_markup=markup, parse_mode=parse_mode)
+        return sent.message_id
+
+    if message_id:
+        try:
+            bot.edit_message_text(text, chat_id, message_id, reply_markup=markup, parse_mode=parse_mode)
+            return message_id
+        except Exception:
+            try:
+                bot.edit_message_caption(caption=text, chat_id=chat_id, message_id=message_id, reply_markup=markup, parse_mode=parse_mode)
+                return message_id
+            except Exception:
+                try:
+                    bot.delete_message(chat_id, message_id)
+                except Exception:
+                    pass
+    sent = bot.send_message(chat_id, text, reply_markup=markup, parse_mode=parse_mode)
+    return sent.message_id
+
+def _show_user_main(chat_id, warehouse, message_id=None):
+    text = f"🏭 <b>{warehouse}</b>\n\nKerakli bo'limni tanlang:"
+    return _show_message_with_optional_photo(
+        chat_id,
+        text,
+        markup=user_main_menu(warehouse),
+        message_id=message_id,
+    )
+
+def _show_user_branches(chat_id, warehouse, action, message_id=None):
+    action_title = "kiritish" if action == "input" else "chiqarish"
+    text = f"🏭 <b>{warehouse}</b>\n\nMahsulot {action_title} uchun bo'limni tanlang:"
+    return _show_message_with_optional_photo(
+        chat_id,
+        text,
+        markup=branches_menu_user(warehouse, action),
+        message_id=message_id,
+    )
+
+def _show_user_types(chat_id, warehouse, branch, action, message_id=None):
+    text = f"{_branch_title(branch)}\n\nMahsulot turini tanlang:"
+    return _show_message_with_optional_photo(
+        chat_id,
+        text,
+        markup=product_types_menu_user(warehouse, branch, action),
+        message_id=message_id,
+    )
+
+def _show_user_products(chat_id, warehouse, branch, product_type_name, action, message_id=None):
+    db = get_db()
+    ptype = db.get_product_type_by_name(product_type_name, warehouse, branch)
+    image_id = ptype.get("image_id") if ptype else None
+    text = f"{_branch_title(branch)}\n📦 <b>{product_type_name}</b>\n\nMahsulotni tanlang:"
+    return _show_message_with_optional_photo(
+        chat_id,
+        text,
+        markup=products_by_type_menu_user(warehouse, branch, product_type_name, action),
+        image_id=image_id,
+        message_id=message_id,
+    )
+
+def _show_user_remove_prompt(chat_id, warehouse, branch, product_type_name, product_name):
+    db = get_db()
+    ptype = db.get_product_type_by_name(product_type_name, warehouse, branch)
+    product = db.get_product_by_name(product_name, warehouse, branch, product_type_name)
+    qty = db.get_inventory(product_name, warehouse, branch, product_type_name).get("quantity", 0)
+    image_id = _get_user_flow_image(product, ptype)
+    text = (
+        f"📦 <b>{product_name}</b>\n"
+        f"{_branch_title(branch)}\n"
+        f"📊 Skladda bor: <b>{qty}</b> dona\n\n"
+        "Chiqariladigan miqdorni yuboring:"
+    )
+    sent_id = _show_message_with_optional_photo(
+        chat_id,
+        text,
+        markup=remove_quantity_back_menu(warehouse, branch, product_type_name),
+        image_id=image_id,
+    )
+    return sent_id, qty
+
+def _send_user_input_result(chat_id, warehouse, branch, product_type_name, product_name, quantity, total_quantity):
+    db = get_db()
+    ptype = db.get_product_type_by_name(product_type_name, warehouse, branch)
+    product = db.get_product_by_name(product_name, warehouse, branch, product_type_name)
+    image_id = _get_user_flow_image(product, ptype)
+    text = (
+        f"📦 <b>{product_name}</b>\n"
+        f"{_branch_title(branch)}\n"
+        f"➕ Qo'shildi: <b>{quantity}</b> dona\n"
+        f"📊 Jami: <b>{total_quantity}</b> dona\n\n"
+        "Yana mahsulot tanlashingiz mumkin:"
+    )
+    return _show_message_with_optional_photo(
+        chat_id,
+        text,
+        markup=products_by_type_menu_user(warehouse, branch, product_type_name, "input", include_back=False),
+        image_id=image_id,
+    )
+
+def _send_user_remove_result(chat_id, warehouse, branch, product_type_name, product_name, quantity, total_quantity, description=None):
+    db = get_db()
+    ptype = db.get_product_type_by_name(product_type_name, warehouse, branch)
+    product = db.get_product_by_name(product_name, warehouse, branch, product_type_name)
+    image_id = _get_user_flow_image(product, ptype)
+    description_block = f"\n<blockquote>{description}</blockquote>\n" if description else "\n"
+    text = (
+        f"📦 <b>{product_name}</b>{description_block}"
+        f"➖ Chiqarildi: <b>{quantity}</b> dona\n"
+        f"📊 Hozirgi qoldiq: <b>{total_quantity}</b> dona\n\n"
+        "Yana mahsulot tanlashingiz mumkin:"
+    )
+    return _show_message_with_optional_photo(
+        chat_id,
+        text,
+        markup=products_by_type_menu_user(warehouse, branch, product_type_name, "remove", include_back=False),
+        image_id=image_id,
+    )
+
+def _complete_remove_without_description(chat_id, user_id, warehouse, branch, product_type_name, product_name, quantity):
+    db = get_db()
+    new_quantity = db.remove_inventory(product_name, quantity, warehouse, branch, product_type_name)
+    result_message_id = _send_user_remove_result(
+        chat_id, warehouse, branch, product_type_name, product_name, quantity, new_quantity, None
+    )
+    _set_user_state(
+        user_id,
+        warehouse=warehouse,
+        branch=branch,
+        product_type=product_type_name,
+        action=None,
+        menu_message_id=result_message_id,
+    )
+
+# ==================== USER HANDLERS ====================
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith("user_warehouse:"))
+def handle_user_warehouse_select(call):
+    warehouse = call.data.split(":", 1)[1]
+    _set_user_state(call.from_user.id, warehouse=warehouse, action=None)
+    bot.answer_callback_query(call.id)
+    _show_user_main(call.message.chat.id, warehouse, call.message.message_id)
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith("user_main:"))
+def handle_user_main_with_warehouse(call):
+    warehouse = call.data.split(":", 1)[1]
+    _clear_user_action(call.from_user.id)
+    bot.answer_callback_query(call.id)
+    _show_user_main(call.message.chat.id, warehouse, call.message.message_id)
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith("user_input:"))
+def handle_user_input(call):
+    warehouse = call.data.split(":", 1)[1]
+    _set_user_state(call.from_user.id, warehouse=warehouse, action="user_input")
+    bot.answer_callback_query(call.id)
+    _show_user_branches(call.message.chat.id, warehouse, "input", call.message.message_id)
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith("user_remove:") and not call.data.startswith("user_remove_desc_"))
+def handle_user_remove(call):
+    warehouse = call.data.split(":", 1)[1]
+    _set_user_state(call.from_user.id, warehouse=warehouse, action="user_remove")
+    bot.answer_callback_query(call.id)
+    _show_user_branches(call.message.chat.id, warehouse, "remove", call.message.message_id)
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith("user_list:"))
+def handle_user_list(call):
+    warehouse = call.data.split(":", 1)[1]
+    _set_user_state(call.from_user.id, warehouse=warehouse, action="user_list")
+    bot.answer_callback_query(call.id)
+    _show_message_with_optional_photo(
+        call.message.chat.id,
+        f"🏭 <b>{warehouse}</b>\n\nRo'yxat uchun bo'limni tanlang:",
+        markup=list_branches_menu(warehouse),
+        message_id=call.message.message_id,
+    )
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith("user_input_branches:"))
+def handle_user_input_branches_back(call):
+    warehouse = call.data.split(":", 1)[1]
+    bot.answer_callback_query(call.id)
+    _show_user_branches(call.message.chat.id, warehouse, "input", call.message.message_id)
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith("user_remove_branches:"))
+def handle_user_remove_branches_back(call):
+    warehouse = call.data.split(":", 1)[1]
+    bot.answer_callback_query(call.id)
+    _show_user_branches(call.message.chat.id, warehouse, "remove", call.message.message_id)
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith("user_input_branch:"))
+def handle_user_input_branch(call):
+    _, warehouse, branch = call.data.split(":", 2)
+    _set_user_state(call.from_user.id, warehouse=warehouse, branch=branch, action="user_input")
+    bot.answer_callback_query(call.id)
+    _show_user_types(call.message.chat.id, warehouse, branch, "input", call.message.message_id)
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith("user_remove_branch:"))
+def handle_user_remove_branch(call):
+    _, warehouse, branch = call.data.split(":", 2)
+    _set_user_state(call.from_user.id, warehouse=warehouse, branch=branch, action="user_remove")
+    bot.answer_callback_query(call.id)
+    _show_user_types(call.message.chat.id, warehouse, branch, "remove", call.message.message_id)
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith("user_input_types:"))
+def handle_user_input_types_back(call):
+    _, warehouse, branch = call.data.split(":", 2)
+    bot.answer_callback_query(call.id)
+    _show_user_types(call.message.chat.id, warehouse, branch, "input", call.message.message_id)
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith("user_remove_types:"))
+def handle_user_remove_types_back(call):
+    _, warehouse, branch, *rest = call.data.split(":")
+    bot.answer_callback_query(call.id)
+    _show_user_types(call.message.chat.id, warehouse, branch, "remove", call.message.message_id)
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith("user_input_type:"))
+def handle_user_input_type(call):
+    _, warehouse, branch, product_type_name = call.data.split(":", 3)
+    _set_user_state(call.from_user.id, warehouse=warehouse, branch=branch, product_type=product_type_name, action="user_input")
+    bot.answer_callback_query(call.id)
+    _show_user_products(call.message.chat.id, warehouse, branch, product_type_name, "input", call.message.message_id)
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith("user_remove_type:"))
+def handle_user_remove_type(call):
+    _, warehouse, branch, product_type_name = call.data.split(":", 3)
+    _set_user_state(call.from_user.id, warehouse=warehouse, branch=branch, product_type=product_type_name, action="user_remove")
+    bot.answer_callback_query(call.id)
+    _show_user_products(call.message.chat.id, warehouse, branch, product_type_name, "remove", call.message.message_id)
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith("user_input_product:"))
+def handle_user_input_product(call):
+    _, warehouse, branch, product_type_name, product_name = call.data.split(":", 4)
+    db = get_db()
+    ptype = db.get_product_type_by_name(product_type_name, warehouse, branch)
+    product = db.get_product_by_name(product_name, warehouse, branch, product_type_name)
+    image_id = _get_user_flow_image(product, ptype)
+    text = (
+        f"📦 <b>{product_name}</b>\n"
+        f"{_branch_title(branch)}\n\n"
+        "Kiritiladigan miqdorni yuboring:"
+    )
+    try:
+        bot.delete_message(call.message.chat.id, call.message.message_id)
+    except Exception:
+        pass
+    prompt_message_id = _show_message_with_optional_photo(call.message.chat.id, text, image_id=image_id)
+    _set_user_state(
+        call.from_user.id,
+        warehouse=warehouse,
+        branch=branch,
+        product_type=product_type_name,
+        product_name=product_name,
+        action="user_input_quantity",
+        prompt_message_id=prompt_message_id,
+    )
+    bot.answer_callback_query(call.id)
+
+@bot.message_handler(func=lambda message: _user_state(message.from_user.id).get("action") == "user_input_quantity")
+def handle_user_input_quantity(message):
+    user_id = message.from_user.id
+    state = _user_state(user_id)
+    try:
+        quantity = int(message.text.strip())
+        if quantity <= 0:
+            raise ValueError
+    except Exception:
+        bot.reply_to(message, MESSAGES["error_invalid_quantity"])
+        return
+
+    db = get_db()
+    new_quantity = db.add_inventory(
+        state["product_name"], quantity, state["warehouse"], state["branch"], state["product_type"]
+    )
+
+    try:
+        bot.delete_message(message.chat.id, state.get("prompt_message_id"))
+    except Exception:
+        pass
+    try:
+        bot.delete_message(message.chat.id, message.message_id)
+    except Exception:
+        pass
+
+    result_message_id = _send_user_input_result(
+        message.chat.id,
+        state["warehouse"],
+        state["branch"],
+        state["product_type"],
+        state["product_name"],
+        quantity,
+        new_quantity,
+    )
+    _set_user_state(
+        user_id,
+        warehouse=state["warehouse"],
+        branch=state["branch"],
+        product_type=state["product_type"],
+        action=None,
+        menu_message_id=result_message_id,
+    )
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith("user_remove_product:"))
+def handle_user_remove_product(call):
+    _, warehouse, branch, product_type_name, product_name = call.data.split(":", 4)
+    try:
+        bot.edit_message_reply_markup(call.message.chat.id, call.message.message_id, reply_markup=None)
+    except Exception:
+        pass
+    prompt_message_id, available_qty = _show_user_remove_prompt(
+        call.message.chat.id, warehouse, branch, product_type_name, product_name
+    )
+    _set_user_state(
+        call.from_user.id,
+        warehouse=warehouse,
+        branch=branch,
+        product_type=product_type_name,
+        product_name=product_name,
+        action="user_remove_quantity",
+        prompt_message_id=prompt_message_id,
+        available_quantity=available_qty,
+    )
+    bot.answer_callback_query(call.id)
+
+@bot.message_handler(func=lambda message: _user_state(message.from_user.id).get("action") == "user_remove_quantity")
+def handle_user_remove_quantity(message):
+    user_id = message.from_user.id
+    state = _user_state(user_id)
+    try:
+        quantity = int(message.text.strip())
+        if quantity <= 0:
+            raise ValueError
+    except Exception:
+        bot.reply_to(message, MESSAGES["error_invalid_quantity"])
+        return
+
+    available_qty = state.get("available_quantity", 0)
+    if quantity > available_qty:
+        bot.reply_to(message, f"❌ Skladda faqat {available_qty} dona mavjud.")
+        return
+
+    try:
+        bot.delete_message(message.chat.id, message.message_id)
+    except Exception:
+        pass
+
+    prompt_id = state.get("prompt_message_id")
+    if prompt_id:
+        _show_message_with_optional_photo(
+            message.chat.id,
+            (
+                f"📦 <b>{state['product_name']}</b>\n"
+                f"➖ Chiqariladi: <b>{quantity}</b> dona\n\n"
+                "Tavsif kiritilsinmi?"
+            ),
+            markup=remove_description_menu(
+                state["warehouse"], state["branch"], state["product_type"], state["product_name"], quantity
+            ),
+            message_id=prompt_id,
+        )
+    _set_user_state(
+        user_id,
+        warehouse=state["warehouse"],
+        branch=state["branch"],
+        product_type=state["product_type"],
+        product_name=state["product_name"],
+        action="user_remove_waiting_description_choice",
+        prompt_message_id=prompt_id,
+        remove_quantity=quantity,
+    )
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith("user_remove_desc_no:"))
+def handle_user_remove_desc_no(call):
+    _, warehouse, branch, product_type_name, product_name, quantity = call.data.split(":", 5)
+    try:
+        bot.delete_message(call.message.chat.id, call.message.message_id)
+    except Exception:
+        pass
+    _complete_remove_without_description(
+        call.message.chat.id, call.from_user.id, warehouse, branch, product_type_name, product_name, int(quantity)
+    )
+    bot.answer_callback_query(call.id)
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith("user_remove_desc_yes:"))
+def handle_user_remove_desc_yes(call):
+    _, warehouse, branch, product_type_name, product_name, quantity = call.data.split(":", 5)
+    try:
+        bot.delete_message(call.message.chat.id, call.message.message_id)
+    except Exception:
+        pass
+    sent = bot.send_message(call.message.chat.id, "✍️ Tavsifni matn ko'rinishida yuboring:")
+    _set_user_state(
+        call.from_user.id,
+        warehouse=warehouse,
+        branch=branch,
+        product_type=product_type_name,
+        product_name=product_name,
+        action="user_remove_description",
+        remove_quantity=int(quantity),
+        prompt_message_id=sent.message_id,
+    )
+    bot.answer_callback_query(call.id)
+
+@bot.message_handler(func=lambda message: _user_state(message.from_user.id).get("action") == "user_remove_description")
+def handle_user_remove_description(message):
+    user_id = message.from_user.id
+    state = _user_state(user_id)
+    description = message.text.strip()
+    db = get_db()
+    new_quantity = db.remove_inventory(
+        state["product_name"], state["remove_quantity"], state["warehouse"], state["branch"], state["product_type"]
+    )
+
+    try:
+        bot.delete_message(message.chat.id, state.get("prompt_message_id"))
+    except Exception:
+        pass
+    try:
+        bot.delete_message(message.chat.id, message.message_id)
+    except Exception:
+        pass
+
+    result_message_id = _send_user_remove_result(
+        message.chat.id,
+        state["warehouse"],
+        state["branch"],
+        state["product_type"],
+        state["product_name"],
+        state["remove_quantity"],
+        new_quantity,
+        description,
+    )
+    _set_user_state(
+        user_id,
+        warehouse=state["warehouse"],
+        branch=state["branch"],
+        product_type=state["product_type"],
+        action=None,
+        menu_message_id=result_message_id,
+    )
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith("list_branch:"))
+def handle_user_list_branch(call):
+    _, warehouse, branch = call.data.split(":", 2)
+    db = get_db()
+    inventory_items = db.get_inventory_by_branch(warehouse, branch)
+    if inventory_items:
+        lines = [f"• {item['product_name']}: {item.get('quantity', 0)} dona" for item in inventory_items]
+        body = "\n".join(lines)
+    else:
+        body = "Mahsulotlar topilmadi."
+
+    text = f"🏭 <b>{warehouse}</b>\n{_branch_title(branch)}\n\n{body}"
+    _show_message_with_optional_photo(
+        call.message.chat.id,
+        text,
+        markup=list_branches_menu(warehouse),
+        message_id=call.message.message_id,
+    )
+    bot.answer_callback_query(call.id)
+
 # ==================== REQUEST HANDLERS ====================
 
 @bot.callback_query_handler(func=lambda call: call.data == "send_request")
@@ -1572,15 +2080,19 @@ def handle_close_menu(call):
 
 @bot.callback_query_handler(func=lambda call: call.data == "user_main")
 def handle_user_main(call):
-    """Foydalanuvchi asosiy menyu"""
+    """Eski callback uchun foydalanuvchi asosiy menyusi"""
     user_id = call.from_user.id
+    warehouse = _user_state(user_id).get("warehouse")
     user_states.pop(user_id, None)
     
     try:
         bot.delete_message(call.message.chat.id, call.message.message_id)
-    except:
+    except Exception:
         pass
-    bot.send_message(call.message.chat.id, "👋 Asosiy Menyu", reply_markup=user_main_menu())
+    if warehouse:
+        bot.send_message(call.message.chat.id, "👋 Asosiy Menyu", reply_markup=user_main_menu(warehouse))
+    else:
+        bot.send_message(call.message.chat.id, "🏭 Skladni tanlang:", reply_markup=user_warehouse_menu())
 
 # ==================== WEBHOOK ====================
 
