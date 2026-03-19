@@ -1580,6 +1580,18 @@ def _show_user_types(chat_id, warehouse, branch, action, message_id=None):
         message_id=message_id,
     )
 
+def _clear_message_buttons(chat_id, message_id):
+    """Oldingi xabardagi inline tugmalarni olib tashlash."""
+    try:
+        bot.edit_message_reply_markup(chat_id, message_id, reply_markup=None)
+    except Exception:
+        pass
+
+def _clear_buttons_and_send_user_types(chat_id, warehouse, branch, action, message_id):
+    """Mahsulot ro'yxati xabarini qoldirib, tugmalarini o'chiradi va mahsulot turlarini yangi xabar qilib yuboradi."""
+    _clear_message_buttons(chat_id, message_id)
+    return _show_user_types(chat_id, warehouse, branch, action)
+
 def _show_user_products(chat_id, warehouse, branch, product_type_name, action, message_id=None):
     db = get_db()
     ptype = db.get_product_type_by_name(product_type_name, warehouse, branch)
@@ -1750,13 +1762,13 @@ def handle_user_remove_branch(call):
 def handle_user_input_types_back(call):
     _, warehouse, branch = call.data.split(":", 2)
     bot.answer_callback_query(call.id)
-    _show_user_types(call.message.chat.id, warehouse, branch, "input", call.message.message_id)
+    _clear_buttons_and_send_user_types(call.message.chat.id, warehouse, branch, "input", call.message.message_id)
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("user_remove_types:"))
 def handle_user_remove_types_back(call):
-    _, warehouse, branch, *rest = call.data.split(":")
+    _, warehouse, branch = call.data.split(":", 2)
     bot.answer_callback_query(call.id)
-    _show_user_types(call.message.chat.id, warehouse, branch, "remove", call.message.message_id)
+    _clear_buttons_and_send_user_types(call.message.chat.id, warehouse, branch, "remove", call.message.message_id)
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("user_input_type:"))
 def handle_user_input_type(call):
