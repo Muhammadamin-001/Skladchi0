@@ -34,7 +34,10 @@ def warehouse_list_menu():
             MESSAGES["button_add"],
             callback_data="warehouse_add"
         ))
-        
+        markup.add(telebot.types.InlineKeyboardButton(
+            "⚙️ Boshqarish",
+            callback_data="admin_settings"
+        ))
         return markup
     except Exception as e:
         logger.error(f"❌ Error in warehouse_list_menu: {e}")
@@ -57,6 +60,43 @@ def warehouse_actions_menu(warehouse):
         "⬅️ Qaytish",
         callback_data="warehouse_list"
     ))
+    return markup
+
+def admin_settings_menu():
+    """Admin sozlamalari"""
+    markup = telebot.types.InlineKeyboardMarkup()
+    markup.add(telebot.types.InlineKeyboardButton("📏 Birliklar", callback_data="units_menu"))
+    markup.add(telebot.types.InlineKeyboardButton("⬅️ Qaytish", callback_data="warehouse_list"))
+    return markup
+
+def units_menu():
+    """Birliklar ro'yxati"""
+    markup = telebot.types.InlineKeyboardMarkup()
+    db = get_db()
+    units = db.get_all_units()
+    for unit in units:
+        markup.add(
+            telebot.types.InlineKeyboardButton(
+                text=f"📏 {unit['name']}",
+                callback_data=f"unit_select:{unit['name']}"
+            )
+        )
+    markup.add(telebot.types.InlineKeyboardButton(MESSAGES["button_add"], callback_data="unit_add"))
+    markup.add(telebot.types.InlineKeyboardButton(MESSAGES["button_back"], callback_data="admin_settings"))
+    return markup
+
+def units_choose_menu(callback_prefix="product_unit_select"):
+    """Mahsulot uchun birlik tanlash tugmalari"""
+    markup = telebot.types.InlineKeyboardMarkup()
+    db = get_db()
+    units = db.get_all_units()
+    for unit in units:
+        markup.add(
+            telebot.types.InlineKeyboardButton(
+                text=f"📏 {unit['name']}",
+                callback_data=f"{callback_prefix}:{unit['name']}"
+            )
+        )
     return markup
 
 # ==================== ADMIN MAIN MENU ====================

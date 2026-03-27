@@ -26,7 +26,7 @@ class MongoDBManager:
 
     def _create_collections(self):
         """Kerakli kolleksiyalar va indekslarni tayyorlash."""
-        collections = ["users", "warehouses", "branches", "product_types", "products", "inventory", "requests"]
+        collections = ["users", "warehouses", "branches", "product_types", "products", "inventory", "requests", "units"]
         for name in collections:
             if name not in self.db.list_collection_names():
                 self.db.create_collection(name)
@@ -49,6 +49,7 @@ class MongoDBManager:
         self.db["branches"].create_index([("name", 1), ("warehouse", 1)], unique=True)
         self.db["product_types"].create_index([("name", 1), ("warehouse", 1), ("branch", 1)], unique=True)
         self.db["products"].create_index([("name", 1), ("warehouse", 1), ("branch", 1), ("product_type", 1)], unique=True)
+        self.db["units"].create_index([("name", 1)], unique=True)
         inventory_indexes = self.db["inventory"].index_information()
         for index_name, index_data in inventory_indexes.items():
             if index_name == "_id_":
@@ -163,12 +164,13 @@ class MongoDBManager:
             self.db["products"].delete_many({"warehouse": warehouse, "branch": name})
 
     # PRODUCT TYPES
-    def add_product_type(self, name, image_id=None, warehouse=None, branch=None):
+    def add_product_type(self, name, image_id=None, warehouse=None, branch=None, common_code=None):
         try:
             self.db["product_types"].insert_one(
                 {
                     "name": name,
                     "image_id": image_id,
+                    "common_code": common_code,
                     "warehouse": warehouse,
                     "branch": branch,
                     "created_at": datetime.utcnow(),
@@ -202,7 +204,7 @@ class MongoDBManager:
             query["branch"] = branch
         return self.db["product_types"].find_one(query)
     
-    def update_product_type(self, old_name, new_name, image_id=None, warehouse=None, branch=None):
+    def update_product_type(self, old_name, new_name, image_id=None, warehouse=None, branch=None, common_code=None):
         try:
             query = {"name": old_name}
             if warehouse is not None:
@@ -213,6 +215,9 @@ class MongoDBManager:
             update_data = {"name": new_name}
             if image_id is not None:
                 update_data["image_id"] = image_id
+            if common_code is not None:
+                update_data["common_code"] = common_code
+
 
             result = self.db["product_types"].update_one(query, {"$set": update_data})
             if result.modified_count:
@@ -252,12 +257,13 @@ class MongoDBManager:
         )
 
     # PRODUCTS
-    def add_product(self, name, code, product_type, warehouse=None, branch=None, image_id=None):
+    def add_product(self, name, code, product_type, warehouse=None, branch=None, image_id=None, unit="dona"):
         try:
             self.db["products"].insert_one(
                 {
                     "name": name,
                     "code": code,
+                    "unit": unit or "dona",
                     "product_type": product_type,
                     "warehouse": warehouse,
                     "branch": branch,
@@ -299,7 +305,7 @@ class MongoDBManager:
             query["product_type"] = product_type
         return self.db["products"].find_one(query)
     
-    def update_product(self, old_name, new_name, new_code, warehouse=None, branch=None, product_type=None, image_id=None):
+    def update_product(self, old_name, new_name, new_code, warehouse=None, branch=None, product_type=None, image_id=None, unit=None):
         query = {"name": old_name}
         if warehouse is not None:
             query["warehouse"] = warehouse
@@ -314,6 +320,8 @@ class MongoDBManager:
            }
             if image_id is not None:
                update_data["image_id"] = image_id
+            if unit is not None:
+               update_data["unit"] = unit
                
             result = self.db["products"].update_one(
                 query,
@@ -430,6 +438,19 @@ class MongoDBManager:
         """So'rovni o'chirish"""
         self.db["requests"].delete_one({"user_id": user_id})
 
+ # ==================== UNITS ====================
+    def add_unit(self, name):
+        try:
+            self.db["units"].insert_one({"name": name, "created_at": datetime.utcnow()})
+            return True
+        except DuplicateKeyError:
+            return False
+
+    def get_all_units(self):
+        return list(self.db["units"].find({}).sort("name", 1))
+
+    def delete_unit(self, name):
+        self.db["units"].delete_one({"name": name})
 
 # Global
 _db_manager = None
