@@ -50,6 +50,14 @@ except Exception as e:
 # ==================== USER STATE STORAGE ====================
 user_states = {}
 
+def _safe_delete_message(chat_id, message_id):
+    """Xabarni imkon qadar o'chiradi (xatolarni yutadi)."""
+    try:
+        bot.delete_message(chat_id, message_id)
+    except Exception:
+        pass
+
+
 def _get_product_display_image(product=None, product_type=None):
     """Mahsulot rasmi bo'lsa o'shani, bo'lmasa tur rasmini qaytaradi."""
     if product and product.get("image_id"):
@@ -771,6 +779,7 @@ def handle_product_type_image_yes(call):
         return
 
     user_states[user_id]["action"] = "uploading_product_type_image"
+    _safe_delete_message(call.message.chat.id, call.message.message_id)
     
     bot.send_message(
         call.message.chat.id,
@@ -814,6 +823,7 @@ def handle_product_type_image_no(call):
     
     data["product_type_image_id"] = None
     user_states[user_id] = data
+    _safe_delete_message(call.message.chat.id, call.message.message_id)
     _ask_product_type_common_code(call.message.chat.id, user_id)
 
 @bot.callback_query_handler(func=lambda call: call.data == "product_type_common_code_yes")
@@ -821,6 +831,7 @@ def handle_product_type_common_code_yes(call):
     data = user_states.get(call.from_user.id, {})
     data["action"] = "waiting_product_type_common_code"
     user_states[call.from_user.id] = data
+    _safe_delete_message(call.message.chat.id, call.message.message_id)
     bot.send_message(
         call.message.chat.id,
         "✍️ Umumiy kodni kiriting:",
@@ -845,6 +856,8 @@ def handle_product_type_common_code_no(call):
     
     user_states.pop(user_id, None)
     
+    _safe_delete_message(call.message.chat.id, call.message.message_id)
+    
     bot.send_message(
         call.message.chat.id,
         f"✅ '{data.get('product_type_name')}' turi qo'shildi!",
@@ -864,7 +877,8 @@ def process_product_type_common_code(message):
         data.get("product_type_name"),
         data.get("product_type_image_id"),
         data.get("warehouse"),
-        data.get("branch", "common")
+        data.get("branch", "common"),
+        code,
     )
     
     
@@ -1359,7 +1373,7 @@ def handle_product_unit_select(call):
     data["product_unit"] = unit_name
     data["action"] = "added_product_confirm"
     user_states[call.from_user.id] = data
-    bot.delete_message(call.message.chat.id, call.message.message_id)
+    _safe_delete_message(call.message.chat.id, call.message.message_id)
     _show_product_add_confirmation(call.message.chat.id, data)
     bot.answer_callback_query(call.id)
 
