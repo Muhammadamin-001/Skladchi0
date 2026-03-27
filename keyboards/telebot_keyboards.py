@@ -395,6 +395,32 @@ def remove_description_menu(warehouse, branch, product_type, product_name, quant
     ))
     return markup
 
+def remove_target_branch_menu(warehouse, product_type, product_name, quantity):
+    """Umumiy bo'limdan chiqarilganda mahsulot qaysi bo'limga chiqqanini tanlash."""
+    markup = telebot.types.InlineKeyboardMarkup()
+    db = get_db()
+    branches = db.get_all_branches(warehouse)
+    for branch in branches:
+        markup.add(
+            telebot.types.InlineKeyboardButton(
+                text=f"🏢 {branch['name']}",
+                callback_data=f"user_remove_target_branch:{warehouse}:{branch['name']}:{product_type}:{product_name}:{quantity}",
+            )
+        )
+    markup.add(
+        telebot.types.InlineKeyboardButton(
+            "🌍 Umumiy bo'lim",
+            callback_data=f"user_remove_target_branch:{warehouse}:common:{product_type}:{product_name}:{quantity}",
+        )
+    )
+    markup.add(
+        telebot.types.InlineKeyboardButton(
+            MESSAGES["button_back"],
+            callback_data=f"user_remove_product:{warehouse}:common:{product_type}:{product_name}",
+        )
+    )
+    return markup
+
 def input_quantity_back_menu(warehouse, branch, product_type):
     """Kiritish miqdori oynasi uchun ortga tugmasi"""
     markup = telebot.types.InlineKeyboardMarkup()

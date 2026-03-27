@@ -22,6 +22,7 @@ from keyboards.telebot_keyboards import (
     products_by_type_menu_user,
     branches_menu_user,
     remove_description_menu,
+    remove_target_branch_menu,
     remove_quantity_back_menu,
     input_quantity_back_menu,
     list_branches_menu
@@ -1300,10 +1301,77 @@ def process_product_edit_code(message):
         return
 
     db = get_db()
+    data["new_product_code"] = new_code
+    ptype = db.get_product_type_by_name(data.get("product_type"), data.get("warehouse"), data.get("branch"))
+
+    # Turda rasm bo'lsa mahsulot rasmi alohida so'ralmaydi.
+    if ptype and ptype.get("image_id"):
+        updated = db.update_product(
+            data.get("old_product_name"),
+            data.get("new_product_name"),
+            data.get("new_product_code"),
+            data.get("warehouse"),
+            data.get("branch"),
+            data.get("product_type"),
+        )
+        warehouse = data.get("warehouse")
+        branch = data.get("branch")
+        product_type = data.get("product_type")
+        new_name = data.get("new_product_name")
+        user_states.pop(user_id, None)
+        if updated:
+            bot.send_message(message.chat.id, "✅ Mahsulot muvaffaqiyatli yangilandi")
+            _show_product_details_message(message.chat.id, message.message_id, warehouse, branch, product_type, new_name)
+        else:
+            bot.send_message(message.chat.id, "❌ Tahrirlashda xatolik (nom/kod band bo'lishi mumkin)")
+        return
+
+    data["action"] = "editing_product_image_decision"
+    user_states[user_id] = data
+    markup = telebot.types.InlineKeyboardMarkup()
+    markup.add(
+        telebot.types.InlineKeyboardButton("✅ Ha", callback_data="product_edit_image_yes"),
+        telebot.types.InlineKeyboardButton("❌ Yo'q", callback_data="product_edit_image_no"),
+    )
+    bot.send_message(
+        message.chat.id,
+        "🖼️ Turda rasm yo'q.\nMahsulot rasmini yangilaysizmi?",
+        reply_markup=markup,
+    )
+
+
+@bot.callback_query_handler(func=lambda call: call.data == "product_edit_image_yes")
+def handle_product_edit_image_yes(call):
+    user_id = call.from_user.id
+    data = user_states.get(user_id, {})
+    if data.get("action") != "editing_product_image_decision":
+        bot.answer_callback_query(call.id, "Holat topilmadi", show_alert=True)
+        return
+    data["action"] = "uploading_edited_product_image"
+    user_states[user_id] = data
+    bot.delete_message(call.message.chat.id, call.message.message_id)
+    bot.send_message(
+        call.message.chat.id,
+        "📷 Yangi rasm yuboring:",
+        reply_markup=back_button(
+            f"product_select:{data['warehouse']}:{data['branch']}:{data['product_type']}:{data['old_product_name']}"
+        ),
+    )
+    bot.answer_callback_query(call.id)
+
+
+@bot.callback_query_handler(func=lambda call: call.data == "product_edit_image_no")
+def handle_product_edit_image_no(call):
+    user_id = call.from_user.id
+    data = user_states.get(user_id, {})
+    if data.get("action") != "editing_product_image_decision":
+        bot.answer_callback_query(call.id, "Holat topilmadi", show_alert=True)
+        return
+    db = get_db()
     updated = db.update_product(
         data.get("old_product_name"),
         data.get("new_product_name"),
-        new_code,
+        data.get("new_product_code"),
         data.get("warehouse"),
         data.get("branch"),
         data.get("product_type"),
@@ -1315,9 +1383,36 @@ def process_product_edit_code(message):
     new_name = data.get("new_product_name")
 
     user_states.pop(user_id, None)
+    bot.delete_message(call.message.chat.id, call.message.message_id)
+    if updated:
+        bot.send_message(call.message.chat.id, "✅ Mahsulot muvaffaqiyatli yangilandi")
+        _show_product_details_message(call.message.chat.id, call.message.message_id, warehouse, branch, product_type, new_name)
+    else:
+        bot.send_message(call.message.chat.id, "❌ Tahrirlashda xatolik (nom/kod band bo'lishi mumkin)")
+    bot.answer_callback_query(call.id)
+
+@bot.message_handler(content_types=['photo'], func=lambda message: user_states.get(message.from_user.id, {}).get("action") == "uploading_edited_product_image")
+def process_edited_product_image(message):
+    user_id = message.from_user.id
+    data = user_states.get(user_id, {})
+    db = get_db()
+    updated = db.update_product(
+        data.get("old_product_name"),
+        data.get("new_product_name"),
+        data.get("new_product_code"),
+        data.get("warehouse"),
+        data.get("branch"),
+        data.get("product_type"),
+        message.photo[-1].file_id,
+    )
+    warehouse = data.get("warehouse")
+    branch = data.get("branch")
+    product_type = data.get("product_type")
+    new_name = data.get("new_product_name")
+    user_states.pop(user_id, None)
 
     if updated:
-        bot.send_message(message.chat.id, "✅ Mahsulot muvaffaqiyatli yangilandi")
+        bot.send_message(message.chat.id, "✅ Mahsulot rasmi bilan yangilandi")
         _show_product_details_message(message.chat.id, message.message_id, warehouse, branch, product_type, new_name)
     else:
         bot.send_message(message.chat.id, "❌ Tahrirlashda xatolik (nom/kod band bo'lishi mumkin)")
@@ -1653,6 +1748,7 @@ def _send_user_input_result(chat_id, warehouse, branch, product_type_name, produ
     text = (
         f"📦 <b>{product_name}</b>\n"
         f"{_branch_title(branch)}\n"
+        f"🗂️ Turi: <b>{product_type_name}</b>\n"
         f"➕ Qo'shildi: <b>{quantity}</b> dona\n"
         f"📊 Jami: <b>{total_quantity}</b> dona\n\n"
         "Yana mahsulot tanlashingiz mumkin:"
@@ -1672,6 +1768,8 @@ def _send_user_remove_result(chat_id, warehouse, branch, product_type_name, prod
     description_block = f"\n<blockquote>{description}</blockquote>\n" if description else "\n"
     text = (
         f"📦 <b>{product_name}</b>{description_block}"
+        f"{_branch_title(branch)}\n"
+        f"🗂️ Turi: <b>{product_type_name}</b>\n"
         f"➖ Chiqarildi: <b>{quantity}</b> dona\n"
         f"📊 Hozirgi qoldiq: <b>{total_quantity}</b> dona\n\n"
         "Yana mahsulot tanlashingiz mumkin:"
@@ -1940,12 +2038,53 @@ def handle_user_remove_quantity(message):
 @bot.callback_query_handler(func=lambda call: call.data.startswith("user_remove_desc_no:"))
 def handle_user_remove_desc_no(call):
     _, warehouse, branch, product_type_name, product_name, quantity = call.data.split(":", 5)
+    if branch == "common":
+        _show_message_with_optional_photo(
+            call.message.chat.id,
+            (
+                f"📦 <b>{product_name}</b>\n"
+                "Tavsif o'rniga qaysi bo'limga chiqarilganini tanlang:"
+            ),
+            markup=remove_target_branch_menu(warehouse, product_type_name, product_name, quantity),
+            message_id=call.message.message_id,
+        )
+        bot.answer_callback_query(call.id)
+        return
     try:
         bot.delete_message(call.message.chat.id, call.message.message_id)
     except Exception:
         pass
     _complete_remove_without_description(
         call.message.chat.id, call.from_user.id, warehouse, branch, product_type_name, product_name, int(quantity)
+    )
+    bot.answer_callback_query(call.id)
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith("user_remove_target_branch:"))
+def handle_user_remove_target_branch(call):
+    _, warehouse, target_branch, product_type_name, product_name, quantity = call.data.split(":", 5)
+    try:
+        bot.delete_message(call.message.chat.id, call.message.message_id)
+    except Exception:
+        pass
+    db = get_db()
+    new_quantity = db.remove_inventory(product_name, int(quantity), warehouse, "common", product_type_name)
+    result_message_id = _send_user_remove_result(
+        call.message.chat.id,
+        warehouse,
+        "common",
+        product_type_name,
+        product_name,
+        int(quantity),
+        new_quantity,
+        f"Chiqim bo'limi: {_branch_title(target_branch)}",
+    )
+    _set_user_state(
+        call.from_user.id,
+        warehouse=warehouse,
+        branch="common",
+        product_type=product_type_name,
+        action=None,
+        menu_message_id=result_message_id,
     )
     bot.answer_callback_query(call.id)
 

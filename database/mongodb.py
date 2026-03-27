@@ -2,6 +2,7 @@
 from datetime import datetime
 import logging
 
+from bson import ObjectId
 from pymongo import MongoClient
 from pymongo.errors import DuplicateKeyError
 
@@ -193,6 +194,14 @@ class MongoDBManager:
             query["branch"] = branch
         return self.db["product_types"].find_one(query)
 
+    def get_product_type_by_id(self, type_id, warehouse=None, branch=None):
+        query = {"_id": ObjectId(type_id)}
+        if warehouse is not None:
+            query["warehouse"] = warehouse
+        if branch is not None:
+            query["branch"] = branch
+        return self.db["product_types"].find_one(query)
+    
     def update_product_type(self, old_name, new_name, image_id=None, warehouse=None, branch=None):
         try:
             query = {"name": old_name}
@@ -208,6 +217,14 @@ class MongoDBManager:
             result = self.db["product_types"].update_one(query, {"$set": update_data})
             if result.modified_count:
                 self.db["products"].update_many(
+                    {
+                        "product_type": old_name,
+                        **({"warehouse": warehouse} if warehouse is not None else {}),
+                        **({"branch": branch} if branch is not None else {}),
+                    },
+                    {"$set": {"product_type": new_name}},
+                )
+                self.db["inventory"].update_many(
                     {
                         "product_type": old_name,
                         **({"warehouse": warehouse} if warehouse is not None else {}),
@@ -272,6 +289,16 @@ class MongoDBManager:
             query["product_type"] = product_type
         return self.db["products"].find_one(query)
 
+    def get_product_by_id(self, product_id, warehouse=None, branch=None, product_type=None):
+        query = {"_id": ObjectId(product_id)}
+        if warehouse is not None:
+            query["warehouse"] = warehouse
+        if branch is not None:
+            query["branch"] = branch
+        if product_type is not None:
+            query["product_type"] = product_type
+        return self.db["products"].find_one(query)
+    
     def update_product(self, old_name, new_name, new_code, warehouse=None, branch=None, product_type=None, image_id=None):
         query = {"name": old_name}
         if warehouse is not None:
@@ -294,6 +321,16 @@ class MongoDBManager:
                 "$set": update_data
                 },
             )
+            if result.modified_count and old_name != new_name:
+                self.db["inventory"].update_many(
+                    self._inventory_query(old_name, warehouse, branch, product_type),
+                    {
+                        "$set": {
+                            "product_name": new_name,
+                            "updated_at": datetime.utcnow(),
+                        }
+                    },
+                )
             return result.modified_count > 0
         except DuplicateKeyError:
             return False
