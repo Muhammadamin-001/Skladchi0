@@ -241,6 +241,15 @@ class MongoDBManager:
         except DuplicateKeyError:
             return False
 
+    def update_products_code_by_type(self, product_type, new_code, warehouse=None, branch=None):
+        query = {"product_type": product_type}
+        if warehouse is not None:
+            query["warehouse"] = warehouse
+        if branch is not None:
+            query["branch"] = branch
+        result = self.db["products"].update_many(query, {"$set": {"code": new_code}})
+        return result.modified_count
+    
     def delete_product_type(self, name, warehouse=None, branch=None):
         query = {"name": name}
         if warehouse is not None:

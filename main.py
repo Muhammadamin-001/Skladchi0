@@ -960,81 +960,164 @@ def handle_product_type_edit(call):
     
     user_id = call.from_user.id
     user_states[user_id] = {
-        "action": "editing_product_type",
+        "action": "awaiting_product_type_name_decision",
         "old_name": product_type,
+        "new_name": product_type,
         "warehouse": warehouse,
         "branch": branch
     }
     
+    markup = telebot.types.InlineKeyboardMarkup()
+    markup.add(
+        telebot.types.InlineKeyboardButton("✅ Ha", callback_data="product_type_name_yes"),
+        telebot.types.InlineKeyboardButton("❌ Yo'q", callback_data="product_type_name_no")
+    )
+    bot.send_message(call.message.chat.id, "✏️ Mahsulot turi nomini yangilaysizmi?", reply_markup=markup)
+
+
+def _ask_product_type_image_decision(chat_id, user_id):
+    data = user_states.get(user_id, {})
+    old_name = data.get("old_name")
+    new_name = data.get("new_name", old_name)
+    db = get_db()
+    ptype = db.get_product_type_by_name(old_name, data.get("warehouse"), data.get("branch"))
+    has_image = bool(ptype and ptype.get("image_id"))
+    data["had_image_before"] = has_image
+    if has_image:
+        data["action"] = "awaiting_image_update"
+        yes_text = "✅ Ha"
+        no_text = "⏭️ O'tkazish"
+        prompt = f"📷 Rasmni yangilaysizmi?\n\n<b>{old_name}</b> → <b>{new_name}</b>"
+        yes_cb = "product_type_update_image_yes"
+        no_cb = "product_type_update_image_no"
+    else:
+        data["action"] = "awaiting_image_add"
+        yes_text = "✅ Ha"
+        no_text = "⏭️ O'tkazish"
+        prompt = f"🖼️ Rasm qo'shasizmi?\n\n<b>{old_name}</b> → <b>{new_name}</b>"
+        yes_cb = "product_type_add_image_yes"
+        no_cb = "product_type_add_image_no"
+    user_states[user_id] = data
+    markup = telebot.types.InlineKeyboardMarkup()
+    markup.add(
+        telebot.types.InlineKeyboardButton(yes_text, callback_data=yes_cb),
+        telebot.types.InlineKeyboardButton(no_text, callback_data=no_cb)
+    )
+    bot.send_message(chat_id, prompt, reply_markup=markup, parse_mode="HTML")
+
+
+def _ask_product_type_code_decision(chat_id, user_id):
+    data = user_states.get(user_id, {})
+    db = get_db()
+    ptype = db.get_product_type_by_name(data.get("old_name"), data.get("warehouse"), data.get("branch"))
+    old_common_code = (ptype or {}).get("common_code")
+    data["old_common_code"] = old_common_code
+    data["action"] = "awaiting_product_type_code_decision"
+    user_states[user_id] = data
+
+    markup = telebot.types.InlineKeyboardMarkup()
+    markup.add(
+        telebot.types.InlineKeyboardButton("✅ Ha", callback_data="product_type_code_edit_yes"),
+        telebot.types.InlineKeyboardButton("⏭️ O'tkazish", callback_data="product_type_code_edit_no")
+    )
+    if old_common_code:
+        text = f"🔢 Umumiy kodni yangilaysizmi?\n\nJoriy kod: <b>{old_common_code}</b>"
+    else:
+        text = "🔢 Umumiy kod qo'shasizmi?"
+    bot.send_message(chat_id, text, reply_markup=markup, parse_mode="HTML")
+
+
+def _finalize_product_type_edit(chat_id, user_id):
+    data = user_states.get(user_id, {})
+    if not data:
+        return
+    db = get_db()
+    old_name = data.get("old_name")
+    new_name = data.get("new_name", old_name)
+    warehouse = data.get("warehouse")
+    branch = data.get("branch")
+    image_id = data.get("new_image_id")
+    new_common_code = data.get("new_common_code")
+    old_common_code = data.get("old_common_code")
+
+    updated = db.update_product_type(
+        old_name,
+        new_name,
+        image_id,
+        warehouse,
+        branch,
+        new_common_code
+    )
+
+    if new_common_code and new_common_code != old_common_code:
+        db.update_products_code_by_type(new_name, new_common_code, warehouse, branch)
+
+    user_states.pop(user_id, None)
+    if updated or (new_common_code and new_common_code != old_common_code):
+        bot.send_message(chat_id, f"✅ '{new_name}' turi yangilandi!", reply_markup=product_types_menu(warehouse, branch))
+    else:
+        bot.send_message(chat_id, "ℹ️ O'zgarish kiritilmadi.", reply_markup=product_types_menu(warehouse, branch))
+
+
+@bot.callback_query_handler(func=lambda call: call.data == "product_type_name_yes")
+def handle_product_type_name_yes(call):
+    user_id = call.from_user.id
+    data = user_states.get(user_id, {})
+    if data.get("action") != "awaiting_product_type_name_decision":
+        bot.answer_callback_query(call.id, "Holat topilmadi", show_alert=True)
+        return
+    data["action"] = "editing_product_type_name_input"
+    user_states[user_id] = data
+    _safe_delete_message(call.message.chat.id, call.message.message_id)
+
     bot.send_message(
         call.message.chat.id,
         "✍️ Yangi tur nomini kiriting:",
-        reply_markup=back_button(f"product_type_back:{warehouse}:{branch}")
+        reply_markup=back_button(f"product_type_back:{data['warehouse']}:{data['branch']}")
     )
+    bot.answer_callback_query(call.id)
 
-@bot.message_handler(func=lambda message: user_states.get(message.from_user.id, {}).get("action") == "editing_product_type")
+@bot.callback_query_handler(func=lambda call: call.data == "product_type_name_no")
+def handle_product_type_name_no(call):
+    user_id = call.from_user.id
+    data = user_states.get(user_id, {})
+    if data.get("action") != "awaiting_product_type_name_decision":
+        bot.answer_callback_query(call.id, "Holat topilmadi", show_alert=True)
+        return
+    data["new_name"] = data.get("old_name")
+    user_states[user_id] = data
+    _safe_delete_message(call.message.chat.id, call.message.message_id)
+    _ask_product_type_image_decision(call.message.chat.id, user_id)
+    bot.answer_callback_query(call.id)
+
+
+@bot.message_handler(func=lambda message: user_states.get(message.from_user.id, {}).get("action") == "editing_product_type_name_input")
 def process_product_type_edit(message):
     """Mahsulot turi nomini o'zgartirish"""
     user_id = message.from_user.id
     data = user_states.get(user_id, {})
-    old_name = data.get("old_name")
     new_name = message.text.strip()
-    warehouse = data.get("warehouse")
-    branch = data.get("branch")
     
     if not new_name:
         bot.send_message(message.chat.id, "❌ Tur nomi bo'sh bo'lishi mumkin emas")
         return
     
-    db = get_db()
-    ptype = db.get_product_type_by_name(old_name, warehouse, branch)
-    
-    if ptype and ptype.get("image_id"):
-        # ✅ RASM MAVJUD - YANGILAYSIZMI DEB SO'RASH
-        user_states[user_id]["action"] = "awaiting_image_update"
-        user_states[user_id]["new_name"] = new_name
-        
-        markup = telebot.types.InlineKeyboardMarkup()
-        markup.add(
-            telebot.types.InlineKeyboardButton("✅ Yangilash", callback_data="product_type_update_image_yes"),
-            telebot.types.InlineKeyboardButton("❌ Qoldirish", callback_data="product_type_update_image_no")
-        )
-        
-        bot.send_message(
-            message.chat.id,
-            f"📷 Rasimni yangilayman?\n\n<b>{old_name}</b> → <b>{new_name}</b>",
-            reply_markup=markup,
-            parse_mode="HTML"
-        )
-    else:
-        # ✅ RASM YO'Q - RASM QO'SHISH SO'RASH
-        user_states[user_id]["action"] = "awaiting_image_add"
-        user_states[user_id]["new_name"] = new_name
-        
-        markup = telebot.types.InlineKeyboardMarkup()
-        markup.add(
-            telebot.types.InlineKeyboardButton("✅ Qo'shish", callback_data="product_type_add_image_yes"),
-            telebot.types.InlineKeyboardButton("❌ Yo'q", callback_data="product_type_add_image_no")
-        )
-        
-        bot.send_message(
-            message.chat.id,
-            f"🖼️ Rasm qo'shaman?\n\n<b>{old_name}</b> → <b>{new_name}</b>",
-            reply_markup=markup,
-            parse_mode="HTML"
-        )
+    data["new_name"] = new_name
+    user_states[user_id] = data
+    _ask_product_type_image_decision(message.chat.id, user_id)
 
 @bot.callback_query_handler(func=lambda call: call.data == "product_type_update_image_yes")
 def handle_product_type_update_image_yes(call):
     """Rasm yangilash"""
     user_id = call.from_user.id
     user_states[user_id]["action"] = "uploading_product_type_new_image"
-    
+    _safe_delete_message(call.message.chat.id, call.message.message_id)
     bot.send_message(
         call.message.chat.id,
         "📷 Yangi rasm yuboring:",
         reply_markup=back_button("product_type_cancel_edit")
     )
+    bot.answer_callback_query(call.id)
 
 @bot.message_handler(content_types=['photo'], func=lambda message: user_states.get(message.from_user.id, {}).get("action") == "uploading_product_type_new_image")
 def process_product_type_new_image(message):
@@ -1042,27 +1125,9 @@ def process_product_type_new_image(message):
     user_id = message.from_user.id
     data = user_states.get(user_id, {})
     
-    image_id = message.photo[-1].file_id
-    
-    db = get_db()
-    db.update_product_type(
-        data.get("old_name"),
-        data.get("new_name"),
-        image_id,
-        data.get("warehouse"),
-        data.get("branch")
-    )
-    
-    warehouse = data.get("warehouse")
-    branch = data.get("branch")
-    
-    user_states.pop(user_id, None)
-    
-    bot.send_message(
-        message.chat.id,
-        f"✅ '{data.get('new_name')}' turi yangilandi!",
-        reply_markup=product_types_menu(warehouse, branch)
-    )
+    data["new_image_id"] = message.photo[-1].file_id
+    user_states[user_id] = data
+    _ask_product_type_code_decision(message.chat.id, user_id)
 
 @bot.callback_query_handler(func=lambda call: call.data == "product_type_update_image_no")
 def handle_product_type_update_image_no(call):
@@ -1070,38 +1135,25 @@ def handle_product_type_update_image_no(call):
     user_id = call.from_user.id
     data = user_states.get(user_id, {})
     
-    db = get_db()
-    db.update_product_type(
-        data.get("old_name"),
-        data.get("new_name"),
-        None,
-        data.get("warehouse"),
-        data.get("branch")
-    )
-    
-    warehouse = data.get("warehouse")
-    branch = data.get("branch")
-    
-    user_states.pop(user_id, None)
-    
-    bot.edit_message_text(
-        f"✅ '{data.get('new_name')}' nomiga o'zgartirildi!",
-        call.message.chat.id,
-        call.message.message_id,
-        reply_markup=product_types_menu(warehouse, branch)
-    )
+    data["new_image_id"] = None
+    user_states[user_id] = data
+    _safe_delete_message(call.message.chat.id, call.message.message_id)
+    _ask_product_type_code_decision(call.message.chat.id, user_id)
+    bot.answer_callback_query(call.id)
+
 
 @bot.callback_query_handler(func=lambda call: call.data == "product_type_add_image_yes")
 def handle_product_type_add_image_yes(call):
     """Rasm qo'shish"""
     user_id = call.from_user.id
     user_states[user_id]["action"] = "uploading_product_type_add_image"
-    
+    _safe_delete_message(call.message.chat.id, call.message.message_id)
     bot.send_message(
         call.message.chat.id,
         "📷 Rasm yuboring:",
         reply_markup=back_button("product_type_cancel_edit")
     )
+    bot.answer_callback_query(call.id)
 
 @bot.message_handler(content_types=['photo'], func=lambda message: user_states.get(message.from_user.id, {}).get("action") == "uploading_product_type_add_image")
 def process_product_type_add_image(message):
@@ -1109,27 +1161,9 @@ def process_product_type_add_image(message):
     user_id = message.from_user.id
     data = user_states.get(user_id, {})
     
-    image_id = message.photo[-1].file_id
-    
-    db = get_db()
-    db.update_product_type(
-        data.get("old_name"),
-        data.get("new_name"),
-        image_id,
-        data.get("warehouse"),
-        data.get("branch")
-    )
-    
-    warehouse = data.get("warehouse")
-    branch = data.get("branch")
-    
-    user_states.pop(user_id, None)
-    
-    bot.send_message(
-        message.chat.id,
-        f"✅ '{data.get('new_name')}' turi rasmli yangilandi!",
-        reply_markup=product_types_menu(warehouse, branch)
-    )
+    data["new_image_id"] = message.photo[-1].file_id
+    user_states[user_id] = data
+    _ask_product_type_code_decision(message.chat.id, user_id)
 
 @bot.callback_query_handler(func=lambda call: call.data == "product_type_add_image_no")
 def handle_product_type_add_image_no(call):
@@ -1137,26 +1171,54 @@ def handle_product_type_add_image_no(call):
     user_id = call.from_user.id
     data = user_states.get(user_id, {})
     
-    db = get_db()
-    db.update_product_type(
-        data.get("old_name"),
-        data.get("new_name"),
-        None,
-        data.get("warehouse"),
-        data.get("branch")
-    )
-    
-    warehouse = data.get("warehouse")
-    branch = data.get("branch")
-    
-    user_states.pop(user_id, None)
-    
-    bot.edit_message_text(
-        f"✅ '{data.get('new_name')}' nomiga o'zgartirildi!",
+    data["new_image_id"] = None
+    user_states[user_id] = data
+    _safe_delete_message(call.message.chat.id, call.message.message_id)
+    _ask_product_type_code_decision(call.message.chat.id, user_id)
+    bot.answer_callback_query(call.id)
+
+
+@bot.callback_query_handler(func=lambda call: call.data == "product_type_code_edit_yes")
+def handle_product_type_code_edit_yes(call):
+    user_id = call.from_user.id
+    data = user_states.get(user_id, {})
+    if data.get("action") != "awaiting_product_type_code_decision":
+        bot.answer_callback_query(call.id, "Holat topilmadi", show_alert=True)
+        return
+    data["action"] = "waiting_product_type_new_common_code"
+    user_states[user_id] = data
+    _safe_delete_message(call.message.chat.id, call.message.message_id)
+    bot.send_message(
         call.message.chat.id,
-        call.message.message_id,
-        reply_markup=product_types_menu(warehouse, branch)
+        "✍️ Yangi umumiy kodni kiriting:",
+        reply_markup=back_button("product_type_cancel_edit"),
     )
+    bot.answer_callback_query(call.id)
+
+
+@bot.callback_query_handler(func=lambda call: call.data == "product_type_code_edit_no")
+def handle_product_type_code_edit_no(call):
+    user_id = call.from_user.id
+    data = user_states.get(user_id, {})
+    if data.get("action") != "awaiting_product_type_code_decision":
+        bot.answer_callback_query(call.id, "Holat topilmadi", show_alert=True)
+        return
+    _safe_delete_message(call.message.chat.id, call.message.message_id)
+    _finalize_product_type_edit(call.message.chat.id, user_id)
+    bot.answer_callback_query(call.id)
+
+
+@bot.message_handler(func=lambda message: user_states.get(message.from_user.id, {}).get("action") == "waiting_product_type_new_common_code")
+def process_product_type_new_common_code(message):
+    user_id = message.from_user.id
+    data = user_states.get(user_id, {})
+    code = message.text.strip()
+    if not code:
+        bot.send_message(message.chat.id, "❌ Kod bo'sh bo'lishi mumkin emas")
+        return
+    data["new_common_code"] = code
+    user_states[user_id] = data
+    _finalize_product_type_edit(message.chat.id, user_id)
 
 # ✅ PRODUCT TYPE DELETE
 @bot.callback_query_handler(func=lambda call: call.data.startswith("product_type_delete:"))
@@ -1432,22 +1494,68 @@ def handle_product_edit(call):
     product_name = parts[4] if len(parts) > 4 else ""
 
     user_states[call.from_user.id] = {
-        "action": "editing_product_name",
+        "action": "awaiting_product_name_decision",
         "warehouse": warehouse,
         "branch": branch,
         "product_type": product_type,
         "old_product_name": product_name,
+        "new_product_name": product_name,
     }
+    markup = telebot.types.InlineKeyboardMarkup()
+    markup.add(
+        telebot.types.InlineKeyboardButton("✅ Ha", callback_data="product_edit_name_yes"),
+        telebot.types.InlineKeyboardButton("❌ Yo'q", callback_data="product_edit_name_no"),
+    )
+    bot.send_message(call.message.chat.id, "✏️ Mahsulot nomini yangilaysizmi?", reply_markup=markup)
 
+def _ask_product_new_code(chat_id, data):
+    data["action"] = "editing_product_code"
+    user_states[data.get("user_id")] = data
     bot.send_message(
-        call.message.chat.id,
-        f"✍️ Yangi mahsulot nomini kiriting:\n\nEski nom: <b>{product_name}</b>",
-        reply_markup=back_button(f"product_select:{warehouse}:{branch}:{product_type}:{product_name}"),
+        chat_id,
+        f"🔢 Yangi mahsulot kodini kiriting:\n\nNom: <b>{data.get('new_product_name')}</b>",
+        reply_markup=back_button(
+            f"product_select:{data['warehouse']}:{data['branch']}:{data['product_type']}:{data['old_product_name']}"
+        ),
         parse_mode="HTML",
     )
 
 
-@bot.message_handler(func=lambda message: user_states.get(message.from_user.id, {}).get("action") == "editing_product_name")
+@bot.callback_query_handler(func=lambda call: call.data == "product_edit_name_yes")
+def handle_product_edit_name_yes(call):
+    user_id = call.from_user.id
+    data = user_states.get(user_id, {})
+    if data.get("action") != "awaiting_product_name_decision":
+        bot.answer_callback_query(call.id, "Holat topilmadi", show_alert=True)
+        return
+    data["action"] = "editing_product_name_input"
+    user_states[user_id] = data
+    _safe_delete_message(call.message.chat.id, call.message.message_id)
+
+    bot.send_message(
+        call.message.chat.id,
+        f"✍️ Yangi mahsulot nomini kiriting:\n\nEski nom: <b>{data['old_product_name']}</b>",
+        reply_markup=back_button(f"product_select:{data['warehouse']}:{data['branch']}:{data['product_type']}:{data['old_product_name']}"),
+        parse_mode="HTML",
+    )
+    bot.answer_callback_query(call.id)
+
+@bot.callback_query_handler(func=lambda call: call.data == "product_edit_name_no")
+def handle_product_edit_name_no(call):
+    user_id = call.from_user.id
+    data = user_states.get(user_id, {})
+    if data.get("action") != "awaiting_product_name_decision":
+        bot.answer_callback_query(call.id, "Holat topilmadi", show_alert=True)
+        return
+    data["new_product_name"] = data.get("old_product_name")
+    data["user_id"] = user_id
+    user_states[user_id] = data
+    _safe_delete_message(call.message.chat.id, call.message.message_id)
+    _ask_product_new_code(call.message.chat.id, data)
+    bot.answer_callback_query(call.id)
+
+
+@bot.message_handler(func=lambda message: user_states.get(message.from_user.id, {}).get("action") == "editing_product_name_input")
 def process_product_edit_name(message):
     """Mahsulot tahriri uchun yangi nom"""
     user_id = message.from_user.id
@@ -1459,17 +1567,10 @@ def process_product_edit_name(message):
         return
 
     data["new_product_name"] = new_name
-    data["action"] = "editing_product_code"
+    data["user_id"] = user_id
     user_states[user_id] = data
 
-    bot.send_message(
-        message.chat.id,
-        f"🔢 Yangi mahsulot kodini kiriting:\n\nYangi nom: <b>{new_name}</b>",
-        reply_markup=back_button(
-            f"product_select:{data['warehouse']}:{data['branch']}:{data['product_type']}:{data['old_product_name']}"
-        ),
-        parse_mode="HTML",
-    )
+    _ask_product_new_code(message.chat.id, data)
 
 
 @bot.message_handler(func=lambda message: user_states.get(message.from_user.id, {}).get("action") == "editing_product_code")
@@ -1504,6 +1605,7 @@ def process_product_edit_code(message):
 @bot.callback_query_handler(func=lambda call: call.data == "product_edit_unit_yes")
 def handle_product_edit_unit_yes(call):
     data = user_states.get(call.from_user.id, {})
+    _safe_delete_message(call.message.chat.id, call.message.message_id)
     db = get_db()
     units = db.get_all_units()
     if not units:
@@ -1527,6 +1629,7 @@ def handle_product_edit_unit_yes(call):
 
 @bot.callback_query_handler(func=lambda call: call.data == "product_edit_unit_no")
 def handle_product_edit_unit_no(call):
+    _safe_delete_message(call.message.chat.id, call.message.message_id)
     bot.answer_callback_query(call.id)
     _continue_product_edit_after_unit(call.message.chat.id, call.from_user.id)
 
