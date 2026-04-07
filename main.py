@@ -587,6 +587,10 @@ def handle_branch_select(call):
     user_id = call.from_user.id
     user_states[user_id] = {"warehouse": warehouse, "branch": branch_name}
     
+    _show_branch_actions(call.message.chat.id, call.message.message_id, warehouse, branch_name)
+
+
+def _show_branch_actions(chat_id, message_id, warehouse, branch_name):
     markup = telebot.types.InlineKeyboardMarkup()
     markup.add(
         telebot.types.InlineKeyboardButton(MESSAGES["button_edit"], callback_data=f"branch_edit:{warehouse}:{branch_name}"),
@@ -596,8 +600,8 @@ def handle_branch_select(call):
     
     bot.edit_message_text(
         f"🏢 Filial: <b>{branch_name}</b>\n\nFaoliyatni tanlang:",
-        call.message.chat.id,
-        call.message.message_id,
+        chat_id,
+        message_id,
         reply_markup=markup,
         parse_mode="HTML"
     )
@@ -646,7 +650,27 @@ def process_branch_edit(message):
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("branch_delete:"))
 def handle_branch_delete(call):
-    """Filial o'chirish"""
+    """Filial o'chirishni tasdiqlash oynasi"""
+    parts = call.data.split(":")
+    warehouse = parts[1]
+    branch_name = parts[2]
+
+    markup = telebot.types.InlineKeyboardMarkup()
+    markup.add(
+        telebot.types.InlineKeyboardButton("✅ Ha", callback_data=f"branch_delete_confirm:{warehouse}:{branch_name}"),
+        telebot.types.InlineKeyboardButton("❌ Yo'q", callback_data=f"branch_delete_cancel:{warehouse}:{branch_name}")
+    )
+
+    bot.edit_message_text(
+        f"⚠️ <b>{branch_name}</b> bo'limini o'chirasizmi?",
+        call.message.chat.id,
+        call.message.message_id,
+        reply_markup=markup,
+        parse_mode="HTML",
+    )
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith("branch_delete_confirm:"))
+def handle_branch_delete_confirm(call):
     parts = call.data.split(":")
     warehouse = parts[1]
     branch_name = parts[2]
@@ -658,12 +682,19 @@ def handle_branch_delete(call):
     user_states.pop(user_id, None)
     
     bot.edit_message_text(
-        MESSAGES["branch_deleted"],
+        f"✅ <b>{branch_name}</b> bo'limi o'chirildi.\n\n{MESSAGES['branch_management']}",
         call.message.chat.id,
         call.message.message_id,
-        reply_markup=branches_menu(warehouse)
+        reply_markup=branches_menu(warehouse),
+        parse_mode="HTML"
     )
-
+@bot.callback_query_handler(func=lambda call: call.data.startswith("branch_delete_cancel:"))
+def handle_branch_delete_cancel(call):
+    parts = call.data.split(":")
+    warehouse = parts[1]
+    branch_name = parts[2]
+    _show_branch_actions(call.message.chat.id, call.message.message_id, warehouse, branch_name)
+    
 # ==================== ADMIN PRODUCT HANDLERS ====================
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("admin_product:"))
@@ -1227,24 +1258,72 @@ def process_product_type_new_common_code(message):
 # ✅ PRODUCT TYPE DELETE
 @bot.callback_query_handler(func=lambda call: call.data.startswith("product_type_delete:"))
 def handle_product_type_delete(call):
-    """Mahsulot turini o'chirish"""
+    """Mahsulot turini o'chirishni tasdiqlash oynasi"""
     parts = call.data.split(":")
     warehouse = parts[1]
     branch = parts[2] if len(parts) > 2 else "common"
     product_type = parts[3] if len(parts) > 3 else ""
     
-    user_id = call.from_user.id
-    user_states.pop(user_id, None)
+    markup = telebot.types.InlineKeyboardMarkup()
+    markup.add(
+        telebot.types.InlineKeyboardButton("✅ Ha", callback_data=f"product_type_delete_confirm:{warehouse}:{branch}:{product_type}"),
+        telebot.types.InlineKeyboardButton("❌ Yo'q", callback_data=f"product_type_delete_cancel:{warehouse}:{branch}:{product_type}"),
+    )
+
+    bot.edit_message_text(
+        f"⚠️ <b>{product_type}</b> turini o'chirasizmi?",
+        call.message.chat.id,
+        call.message.message_id,
+        reply_markup=markup,
+        parse_mode="HTML",
+    )
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith("product_type_delete_confirm:"))
+def handle_product_type_delete_confirm(call):
+    parts = call.data.split(":")
+    warehouse = parts[1]
+    branch = parts[2] if len(parts) > 2 else "common"
+    product_type = parts[3] if len(parts) > 3 else ""
+
+    user_states.pop(call.from_user.id, None)
     
     db = get_db()
     db.delete_product_type(product_type, warehouse, branch)
     
     bot.edit_message_text(
-        f"🗑️ '{product_type}' turi o'chirildi",
+        f"✅ <b>{product_type}</b> turi o'chirildi.\n\nTur ro'yxati:",
         call.message.chat.id,
         call.message.message_id,
-        reply_markup=product_types_menu(warehouse, branch)
+        reply_markup=product_types_menu(warehouse, branch),
+        parse_mode="HTML",
     )
+    
+@bot.callback_query_handler(func=lambda call: call.data.startswith("product_type_delete_cancel:"))
+def handle_product_type_delete_cancel(call):
+    parts = call.data.split(":")
+    warehouse = parts[1]
+    branch = parts[2] if len(parts) > 2 else "common"
+    product_type = parts[3] if len(parts) > 3 else ""
+
+    user_states[call.from_user.id] = {"warehouse": warehouse, "branch": branch, "product_type": product_type}
+    text = f"📦 <b>{product_type}</b>\n\nAmalni tanlang:"
+    db = get_db()
+    ptype = db.get_product_type_by_name(product_type, warehouse, branch)
+    markup = product_type_actions_menu(warehouse, branch, product_type)
+    if ptype and ptype.get("image_id"):
+        try:
+            bot.edit_message_media(
+                media=telebot.types.InputMediaPhoto(ptype["image_id"], caption=text, parse_mode="HTML"),
+                chat_id=call.message.chat.id,
+                message_id=call.message.message_id,
+                reply_markup=markup,
+            )
+            return
+        except Exception:
+            pass
+    bot.edit_message_text(text, call.message.chat.id, call.message.message_id, reply_markup=markup, parse_mode="HTML")
+
+
 
 # ==================== PRODUCT HANDLERS ====================
 
@@ -1908,6 +1987,19 @@ def handle_admin_back(call):
         parse_mode="HTML"
     )
 
+@bot.callback_query_handler(func=lambda call: call.data.startswith("admin_home:"))
+def handle_admin_home(call):
+    """Admin uchun Asosiy: eski xabarni o'chirib asosiy sahifani yangi xabar qilib yuborish."""
+    warehouse = call.data.split(":", 1)[1]
+    user_states.pop(call.from_user.id, None)
+    _safe_delete_message(call.message.chat.id, call.message.message_id)
+    bot.send_message(
+        call.message.chat.id,
+        f"👤 Salom, Administrator!\n\n🏭 Sklad: <b>{warehouse}</b>\n\nIshlash uchun tugmani tanlang:",
+        reply_markup=admin_main_menu(warehouse),
+        parse_mode="HTML"
+    )
+
 @bot.callback_query_handler(func=lambda call: call.data.startswith("product_type_back:"))
 def handle_product_type_back(call):
     """Filial tanlashga qaytish"""
@@ -2312,6 +2404,17 @@ def handle_user_main_with_warehouse(call):
     bot.answer_callback_query(call.id)
     _show_user_main(call.message.chat.id, warehouse, call.message.message_id)
 
+ #==== User Asosiy tugma orqali qaytsa ===== 
+@bot.callback_query_handler(func=lambda call: call.data.startswith("user_home:"))
+def handle_user_home(call):
+    """Foydalanuvchi uchun Asosiy: eski xabarni o'chirib asosiy sahifani qayta yuborish."""
+    warehouse = call.data.split(":", 1)[1]
+    _set_user_state(call.from_user.id, warehouse=warehouse, action=None)
+    _safe_delete_message(call.message.chat.id, call.message.message_id)
+    _show_user_main(call.message.chat.id, warehouse)
+    bot.answer_callback_query(call.id)
+
+
 @bot.callback_query_handler(func=lambda call: call.data.startswith("user_input:"))
 def handle_user_input(call):
     warehouse = call.data.split(":", 1)[1]
@@ -2632,7 +2735,7 @@ def handle_user_remove_desc_yes(call):
         bot.delete_message(call.message.chat.id, call.message.message_id)
     except Exception:
         pass
-    sent = bot.send_message(call.message.chat.id, "✍️ Tavsifni matn ko'rinishida yuboring:")
+    sent = bot.send_message(call.message.chat.id, "\tChiqariladi: 📦 <b>{product_name}</b>\n✍️ Tavsifni matn ko'rinishida yuboring:")
     _set_user_state(
         call.from_user.id,
         warehouse=warehouse,

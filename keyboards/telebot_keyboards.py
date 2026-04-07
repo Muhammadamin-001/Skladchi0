@@ -214,7 +214,10 @@ def product_types_menu(warehouse, branch):
             MESSAGES["button_add"],
             callback_data=f"product_type_add:{warehouse}:{branch}"
         ))
-        
+        markup.add(telebot.types.InlineKeyboardButton(
+            "🏠 Asosiy",
+            callback_data=f"admin_home:{warehouse}"
+        ))
         markup.add(telebot.types.InlineKeyboardButton(
             MESSAGES["button_back"],
             callback_data=f"product_branch_back:{warehouse}:{branch}"
@@ -270,7 +273,10 @@ def products_by_type_menu(warehouse, branch, product_type):
             MESSAGES["button_add"],
             callback_data=f"product_add:{warehouse}:{branch}:{product_type}"
         ))
-        
+        markup.add(telebot.types.InlineKeyboardButton(
+            "🏠 Asosiy",
+            callback_data=f"admin_home:{warehouse}"
+        ))
         markup.add(telebot.types.InlineKeyboardButton(
             MESSAGES["button_back"],
             callback_data=f"product_type_back:{warehouse}:{branch}"
@@ -383,10 +389,16 @@ def product_types_menu_user(warehouse, branch, action="input"):
             if row:
                 markup.add(*row)
         
-        markup.add(telebot.types.InlineKeyboardButton(
-            MESSAGES["button_back"],
-            callback_data=f"user_{action}_branches:{warehouse}"
-        ))
+        markup.add(
+            telebot.types.InlineKeyboardButton(
+                "🏠 Asosiy",
+                callback_data=f"user_home:{warehouse}"
+            ),
+            telebot.types.InlineKeyboardButton(
+                MESSAGES["button_back"],
+                callback_data=f"user_{action}_branches:{warehouse}"
+            )
+        )
         return markup
     except Exception as e:
         logger.error(f"❌ Error in product_types_menu_user: {e}")
@@ -412,10 +424,16 @@ def products_by_type_menu_user(warehouse, branch, product_type, action="input", 
                 markup.add(*row)
 
         if include_back:
-            markup.add(telebot.types.InlineKeyboardButton(
-                MESSAGES["button_back"],
-                callback_data=f"user_{action}_types:{warehouse}:{branch}"
-            ))
+            markup.add(
+                telebot.types.InlineKeyboardButton(
+                    "🏠 Asosiy",
+                    callback_data=f"user_home:{warehouse}"
+                ),
+                telebot.types.InlineKeyboardButton(
+                    MESSAGES["button_back"],
+                    callback_data=f"user_{action}_types:{warehouse}:{branch}"
+                )
+            )
         return markup
     except Exception as e:
         logger.error(f"❌ Error in products_by_type_menu_user: {e}")
