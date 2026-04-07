@@ -2678,7 +2678,7 @@ def handle_user_remove_desc_no(call):
             call.message.chat.id,
             (
                 f"📦 <b>{product_name}</b>\n"
-                "Tavsif o'rniga qaysi bo'limga chiqarilganini tanlang (Izoh: Umumiydan tashqari):"
+                "Tavsif o'rniga qaysi bo'limga chiqarilganini tanlang:"
             ),
             markup=remove_target_branch_menu(warehouse, product_type_name, product_name, quantity),
             message_id=call.message.message_id,
