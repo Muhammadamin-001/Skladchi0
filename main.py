@@ -2677,7 +2677,7 @@ def handle_user_remove_desc_no(call):
         _show_message_with_optional_photo(
             call.message.chat.id,
             (
-                f"📦 <b>{product_name}</b>\n"
+                f" {product_name}\n"
                 "Tavsif o'rniga qaysi bo'limga chiqarilganini tanlang:"
             ),
             markup=remove_target_branch_menu(warehouse, product_type_name, product_name, quantity),
