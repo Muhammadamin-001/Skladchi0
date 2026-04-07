@@ -2055,6 +2055,59 @@ def _show_user_products(chat_id, warehouse, branch, product_type_name, action, m
         message_id=message_id,
     )
 
+def _show_list_branches(chat_id, warehouse, message_id=None, is_admin=False):
+    text = f"🏭 <b>{warehouse}</b>\n\nRo'yxat uchun bo'limni tanlang:"
+    return _show_message_with_optional_photo(
+        chat_id,
+        text,
+        markup=list_branches_menu(warehouse, is_admin=is_admin),
+        message_id=message_id,
+    )
+
+def _show_list_types(chat_id, warehouse, branch, message_id=None):
+    text = f"{_branch_title(branch)}\n\nMahsulot turini tanlang:"
+    return _show_message_with_optional_photo(
+        chat_id,
+        text,
+        markup=product_types_menu_user(warehouse, branch, "list"),
+        message_id=message_id,
+    )
+
+def _show_list_products(chat_id, warehouse, branch, product_type_name, message_id=None):
+    db = get_db()
+    ptype = db.get_product_type_by_name(product_type_name, warehouse, branch)
+    image_id = ptype.get("image_id") if ptype else None
+    text = f"{_branch_title(branch)}\n📦 <b>{product_type_name}</b>\n\nMahsulotni tanlang:"
+    return _show_message_with_optional_photo(
+        chat_id,
+        text,
+        markup=products_by_type_menu_user(warehouse, branch, product_type_name, "list"),
+        image_id=image_id,
+        message_id=message_id,
+    )
+
+def _show_list_product_details(chat_id, warehouse, branch, product_type_name, product_name, message_id=None):
+    db = get_db()
+    ptype = db.get_product_type_by_name(product_type_name, warehouse, branch)
+    product = db.get_product_by_name(product_name, warehouse, branch, product_type_name)
+    qty = db.get_inventory(product_name, warehouse, branch, product_type_name).get("quantity", 0)
+    unit = _get_product_unit(db, warehouse, branch, product_type_name, product_name)
+    image_id = _get_product_display_image(product, ptype)
+    text = (
+        f"{_branch_title(branch)}\n"
+        f"🗂️ Turi: <b>{product_type_name}</b>\n"
+        f"📦 Mahsulot: <b>{product_name}</b>\n"
+        f"📊 Skladda bor: <b>{qty}</b> {unit}\n\n"
+        "Shu turdagi mahsulotlar:"
+    )
+    return _show_message_with_optional_photo(
+        chat_id,
+        text,
+        markup=products_by_type_menu_user(warehouse, branch, product_type_name, "list"),
+        image_id=image_id,
+        message_id=message_id,
+    )
+
 def _show_user_input_prompt(chat_id, warehouse, branch, product_type_name, product_name):
     db = get_db()
     ptype = db.get_product_type_by_name(product_type_name, warehouse, branch)
@@ -2229,11 +2282,27 @@ def handle_user_list(call):
     warehouse = call.data.split(":", 1)[1]
     _set_user_state(call.from_user.id, warehouse=warehouse, action="user_list")
     bot.answer_callback_query(call.id)
-    _show_message_with_optional_photo(
-        call.message.chat.id,
-        f"🏭 <b>{warehouse}</b>\n\nRo'yxat uchun bo'limni tanlang:",
-        markup=list_branches_menu(warehouse),
-        message_id=call.message.message_id,
+    _show_list_branches(call.message.chat.id, warehouse, call.message.message_id, is_admin=False)
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith("admin_list:"))
+def handle_admin_list(call):
+    if call.from_user.id != ADMIN_ID:
+        bot.answer_callback_query(call.id, MESSAGES["error_access_denied"], show_alert=True)
+        return
+    warehouse = call.data.split(":", 1)[1]
+    _set_user_state(call.from_user.id, warehouse=warehouse, action="admin_list")
+    bot.answer_callback_query(call.id)
+    _show_list_branches(call.message.chat.id, warehouse, call.message.message_id, is_admin=True)
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith("admin_list_soon:"))
+def handle_admin_list_soon(call):
+    if call.from_user.id != ADMIN_ID:
+        bot.answer_callback_query(call.id, MESSAGES["error_access_denied"], show_alert=True)
+        return
+    bot.answer_callback_query(
+        call.id,
+        "Bu funksiyalar jarayonda, Tez orada qo'shiladi..",
+        show_alert=True,
     )
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("user_input_branches:"))
@@ -2247,6 +2316,13 @@ def handle_user_remove_branches_back(call):
     warehouse = call.data.split(":", 1)[1]
     bot.answer_callback_query(call.id)
     _show_user_branches(call.message.chat.id, warehouse, "remove", call.message.message_id)
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith("user_list_branches:"))
+def handle_user_list_branches_back(call):
+    warehouse = call.data.split(":", 1)[1]
+    is_admin = call.from_user.id == ADMIN_ID and _user_state(call.from_user.id).get("action") == "admin_list"
+    bot.answer_callback_query(call.id)
+    _show_list_branches(call.message.chat.id, warehouse, call.message.message_id, is_admin=is_admin)
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("user_input_products:"))
 def handle_user_input_products_back(call):
@@ -2564,31 +2640,50 @@ def handle_user_remove_description(message):
     )
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("list_branch:"))
-def handle_user_list_branch(call):
+def handle_list_branch(call):
     _, warehouse, branch = call.data.split(":", 2)
-    db = get_db()
-    inventory_items = db.get_inventory_by_branch(warehouse, branch)
-    if inventory_items:
-        lines = []
-        for item in inventory_items:
-            unit = _get_product_unit(
-                db,
-                warehouse,
-                branch,
-                item.get("product_type"),
-                item["product_name"],
-            )
-            lines.append(f"• {item['product_name']}: {item.get('quantity', 0)} {unit}")
-        body = "\n".join(lines)
-    else:
-        body = "Mahsulotlar topilmadi."
+    _set_user_state(call.from_user.id, warehouse=warehouse, branch=branch, action="list")
+    _show_list_types(call.message.chat.id, warehouse, branch, call.message.message_id)
+    bot.answer_callback_query(call.id)
 
-    text = f"🏭 <b>{warehouse}</b>\n{_branch_title(branch)}\n\n{body}"
-    _show_message_with_optional_photo(
+@bot.callback_query_handler(func=lambda call: call.data.startswith("user_list_types:"))
+def handle_list_types_back(call):
+    _, warehouse, branch = call.data.split(":", 2)
+    _set_user_state(call.from_user.id, warehouse=warehouse, branch=branch, action="list")
+    _show_list_types(call.message.chat.id, warehouse, branch, call.message.message_id)
+    bot.answer_callback_query(call.id)
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith("user_list_type:"))
+def handle_list_type(call):
+    _, warehouse, branch, product_type_name = call.data.split(":", 3)
+    _set_user_state(
+        call.from_user.id,
+        warehouse=warehouse,
+        branch=branch,
+        product_type=product_type_name,
+        action="list",
+    )
+    _show_list_products(call.message.chat.id, warehouse, branch, product_type_name, call.message.message_id)
+    bot.answer_callback_query(call.id)
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith("user_list_product:"))
+def handle_list_product(call):
+    _, warehouse, branch, product_type_name, product_name = call.data.split(":", 4)
+    _set_user_state(
+        call.from_user.id,
+        warehouse=warehouse,
+        branch=branch,
+        product_type=product_type_name,
+        product_name=product_name,
+        action="list",
+    )
+    _show_list_product_details(
         call.message.chat.id,
-        text,
-        markup=list_branches_menu(warehouse),
-        message_id=call.message.message_id,
+        warehouse,
+        branch,
+        product_type_name,
+        product_name,
+        call.message.message_id,
     )
     bot.answer_callback_query(call.id)
 

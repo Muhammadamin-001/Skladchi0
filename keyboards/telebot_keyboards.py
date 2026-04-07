@@ -484,7 +484,7 @@ def remove_quantity_back_menu(warehouse, branch, product_type):
     ))
     return markup
 
-def list_branches_menu(warehouse):
+def list_branches_menu(warehouse, is_admin=False):
     """Ro'yxat uchun bo'limlar"""
     try:
         db = get_db()
@@ -501,9 +501,14 @@ def list_branches_menu(warehouse):
             "🌍 Umumiy",
             callback_data=f"list_branch:{warehouse}:common"
         ))
+        if is_admin:
+            markup.add(
+                telebot.types.InlineKeyboardButton("📊 Hisobot", callback_data=f"admin_list_soon:{warehouse}:hisobot"),
+                telebot.types.InlineKeyboardButton("📦 Skladda", callback_data=f"admin_list_soon:{warehouse}:skladda"),
+            )
         markup.add(telebot.types.InlineKeyboardButton(
             MESSAGES["button_back"],
-            callback_data=f"user_main:{warehouse}"
+            callback_data=f"admin_back:{warehouse}" if is_admin else f"user_main:{warehouse}"
         ))
         return markup
     except Exception as e:

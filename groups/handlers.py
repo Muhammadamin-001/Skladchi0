@@ -112,7 +112,7 @@ def register_group_handlers(bot, user_states, ADMIN_ID):
         
         bot.send_message(
             message.chat.id,
-            f"✍️ Guruh ID sini kiriting:\n(Masalan: -1001234567890)\n\n⚠️ Bot guruhe Admin bo'lishi kerak!",
+            f"✍️ Guruh ID sini @username_to_id_bot orqali olib, yuboring:\n(Masalan: -1001234567890)\n\n⚠️ Bot guruhga Admin bo'lishi kerak!",
             reply_markup=back_button("group_add_start"),
         )
     
