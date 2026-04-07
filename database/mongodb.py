@@ -471,3 +471,42 @@ def init_db():
 
 def get_db():
     return _db_manager
+
+# File oxirida qo'shish:
+
+def add_group(self, warehouse, group_id, group_link):
+    """Guruh qo'shish"""
+    groups = self.db['groups']
+    try:
+        group_info = {
+            'warehouse': warehouse,
+            'group_id': group_id,
+            'group_link': group_link,
+            'group_name': f"Group {group_id}",
+            'created_at': datetime.datetime.now(),
+        }
+        groups.insert_one(group_info)
+        return True
+    except Exception as e:
+        logger.error(f"Guruh qo'shishda xato: {e}")
+        return False
+
+def get_warehouse_groups(self, warehouse):
+    """Skladning barcha guruhlari"""
+    groups = self.db['groups']
+    return list(groups.find({'warehouse': warehouse}))
+
+def get_group(self, warehouse, group_id):
+    """Bitta guruhni olish"""
+    groups = self.db['groups']
+    return groups.find_one({'warehouse': warehouse, 'group_id': group_id})
+
+def delete_group(self, warehouse, group_id):
+    """Guruhni o'chirish"""
+    groups = self.db['groups']
+    groups.delete_one({'warehouse': warehouse, 'group_id': group_id})
+
+def delete_user(self, user_id):
+    """Foydalanuvchini o'chirish"""
+    users = self.db['users']
+    users.delete_one({'user_id': user_id})

@@ -30,6 +30,9 @@ from keyboards.telebot_keyboards import (
     units_menu,
     units_choose_menu,
 )
+# Line 30 dan keyin qo'shish:
+from modules.groups.handlers import register_group_handlers
+from modules.admin_users.handlers import register_admin_users_handlers
 
 logging.basicConfig(
     level=logging.INFO,
@@ -258,6 +261,7 @@ def handle_warehouse_list(call):
         reply_markup=warehouse_list_menu()
     )
 
+# YANGI (Line 273):
 @bot.callback_query_handler(func=lambda call: call.data == "admin_settings")
 def handle_admin_settings(call):
     """Admin sozlamalari"""
@@ -2651,6 +2655,16 @@ def webhook():
     except Exception as e:
         logger.error(f"❌ Webhook error: {e}")
     return "ok", 200
+
+# Line 2660 dan oldin qo'shish:
+# ==================== MODULE REGISTRATION ====================
+logger.info("🔌 Modullar ro'yxatlanmoqda...")
+try:
+    register_group_handlers(bot, user_states, ADMIN_ID)
+    register_admin_users_handlers(bot, user_states, ADMIN_ID)
+    logger.info("✅ Barcha modullar ro'yxatlandi")
+except Exception as e:
+    logger.error(f"❌ Modul ro'yxatlash xatosi: {e}")
 
 @app.route('/')
 def index():

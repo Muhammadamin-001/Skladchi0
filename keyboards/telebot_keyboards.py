@@ -62,11 +62,16 @@ def warehouse_actions_menu(warehouse):
     ))
     return markup
 
+#oxirida qo'shish:
 def admin_settings_menu():
-    """Admin sozlamalari"""
+    """Admin boshqarish menyu"""
     markup = telebot.types.InlineKeyboardMarkup()
-    markup.add(telebot.types.InlineKeyboardButton("📏 Birliklar", callback_data="units_menu"))
-    markup.add(telebot.types.InlineKeyboardButton("⬅️ Qaytish", callback_data="warehouse_list"))
+    markup.add(
+        telebot.types.InlineKeyboardButton("📏 Birliklar", callback_data="units_menu"),
+        telebot.types.InlineKeyboardButton("👥 Guruhlar", callback_data="groups_menu"),
+    )
+    markup.add(telebot.types.InlineKeyboardButton("👤 Foydalanuvchilar", callback_data="users_list_menu"))
+    markup.add(telebot.types.InlineKeyboardButton("⬅️ Ortga", callback_data="warehouse_list"))
     return markup
 
 def units_menu():
