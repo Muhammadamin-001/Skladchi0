@@ -2677,7 +2677,7 @@ def handle_user_remove_desc_no(call):
         _show_message_with_optional_photo(
             call.message.chat.id,
             (
-                f" {product_name}\n"
+                f"📦 <b>{product_name}</b>\n"
                 "Tavsif o'rniga qaysi bo'limga chiqarilganini tanlang:"
             ),
             markup=remove_target_branch_menu(warehouse, product_type_name, product_name, quantity),
@@ -2735,7 +2735,7 @@ def handle_user_remove_desc_yes(call):
         bot.delete_message(call.message.chat.id, call.message.message_id)
     except Exception:
         pass
-    sent = bot.send_message(call.message.chat.id, f"➖ Chiqariladi: 📦 <b>{product_name}</b>\n\n✍️ Tavsifni matn ko'rinishida yuboring:")
+    sent = bot.send_message(call.message.chat.id, f"➖ Chiqariladi: {product_name}\n\n✍️ Tavsifni matn ko'rinishida yuboring:")
     _set_user_state(
         call.from_user.id,
         warehouse=warehouse,
