@@ -31,8 +31,8 @@ from keyboards.telebot_keyboards import (
     units_choose_menu,
 )
 # Line 30 dan keyin qo'shish:
-from modules.groups.handlers import register_group_handlers
-from modules.admin_users.handlers import register_admin_users_handlers
+from groups.handlers import register_group_handlers
+from admin_users.handlers import register_admin_users_handlers
 
 logging.basicConfig(
     level=logging.INFO,
@@ -2118,6 +2118,41 @@ def _send_user_input_result(chat_id, warehouse, branch, product_type_name, produ
         image_id=image_id,
     )
 
+def _notify_groups_about_inventory_change(user, warehouse, branch, product_type_name, product_name, quantity, total_quantity, action, description=None):
+    db = get_db()
+    groups = db.get_warehouse_groups(warehouse)
+    if not groups:
+        return
+
+    ptype = db.get_product_type_by_name(product_type_name, warehouse, branch)
+    product = db.get_product_by_name(product_name, warehouse, branch, product_type_name)
+    image_id = _get_user_flow_image(product, ptype)
+    unit = _get_product_unit(db, warehouse, branch, product_type_name, product_name)
+    username = f"@{user.username}" if user.username else "NoUsername"
+    change_line = "➕ Kirim" if action == "input" else "➖ Chiqim"
+    description_text = f"\n📝 Tavsif: {description}" if description else ""
+    text = (
+        f"📦 <b>{product_name}</b>\n"
+        f"🏭 Sklad: <b>{warehouse}</b>\n"
+        f"{_branch_title(branch)}\n"
+        f"🗂️ Turi: <b>{product_type_name}</b>\n"
+        f"{change_line}: <b>{quantity}</b> {unit}\n"
+        f"📊 Joriy qoldiq: <b>{total_quantity}</b> {unit}{description_text}\n\n"
+        f"👤 {username}\n"
+        f"🆔 <code>{user.id}</code>"
+    )
+    for group in groups:
+        group_id = group.get("group_id")
+        if not group_id:
+            continue
+        try:
+            if image_id:
+                bot.send_photo(group_id, image_id, caption=text, parse_mode="HTML")
+            else:
+                bot.send_message(group_id, text, parse_mode="HTML")
+        except Exception as e:
+            logger.warning(f"Guruhga yuborib bo'lmadi ({group_id}): {e}")
+
 def _send_user_remove_result(chat_id, warehouse, branch, product_type_name, product_name, quantity, total_quantity, description=None):
     db = get_db()
     ptype = db.get_product_type_by_name(product_type_name, warehouse, branch)
@@ -2153,6 +2188,10 @@ def _complete_remove_without_description(chat_id, user_id, warehouse, branch, pr
         product_type=product_type_name,
         action=None,
         menu_message_id=result_message_id,
+    )
+    user = bot.get_chat(user_id)
+    _notify_groups_about_inventory_change(
+        user, warehouse, branch, product_type_name, product_name, quantity, new_quantity, "remove"
     )
 
 # ==================== USER HANDLERS ====================
@@ -2316,6 +2355,11 @@ def handle_user_input_quantity(message):
         quantity,
         new_quantity,
     )
+    _notify_groups_about_inventory_change(
+        message.from_user, state["warehouse"], state["branch"], state["product_type"], state["product_name"],
+        quantity, new_quantity, "input"
+    )
+    
     _set_user_state(
         user_id,
         warehouse=state["warehouse"],
@@ -2441,6 +2485,11 @@ def handle_user_remove_target_branch(call):
         new_quantity,
         f"Chiqim bo'limi: {_branch_title(target_branch)}",
     )
+    _notify_groups_about_inventory_change(
+        call.from_user, warehouse, "common", product_type_name, product_name, int(quantity), new_quantity, "remove",
+        f"Chiqim bo'limi: {_branch_title(target_branch)}"
+    )
+    
     _set_user_state(
         call.from_user.id,
         warehouse=warehouse,
@@ -2500,6 +2549,11 @@ def handle_user_remove_description(message):
         new_quantity,
         description,
     )
+    _notify_groups_about_inventory_change(
+        message.from_user, state["warehouse"], state["branch"], state["product_type"], state["product_name"],
+        state["remove_quantity"], new_quantity, "remove", description
+    )
+    
     _set_user_state(
         user_id,
         warehouse=state["warehouse"],

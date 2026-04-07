@@ -1,14 +1,7 @@
 import telebot
 import logging
 from database.mongodb import get_db
-from .keyboards import (
-    group_menu,
-    group_actions_menu,
-    group_select_menu,
-    group_confirm_menu,
-    group_list_menu,
-    back_button,
-)
+from .keyboards import group_menu, group_select_menu, group_list_menu, back_button
 
 logger = logging.getLogger(__name__)
 
@@ -67,6 +60,10 @@ def register_group_handlers(bot, user_states, ADMIN_ID):
     @bot.callback_query_handler(func=lambda call: call.data.startswith("group_select_warehouse:"))
     def handle_group_select_warehouse(call):
         """Skladni tanlash"""
+        if call.from_user.id != ADMIN_ID:
+            bot.answer_callback_query(call.id, "Ruxsati yo'q", show_alert=True)
+            return
+        
         parts = call.data.split(":")
         warehouse = parts[1]
         action = parts[2]
@@ -79,7 +76,7 @@ def register_group_handlers(bot, user_states, ADMIN_ID):
                 f"📦 <b>{warehouse}</b>\n\nGuruh linkini kiriting:\n\n(Masalan: https://t.me/+abcdefg123)",
                 call.message.chat.id,
                 call.message.message_id,
-                reply_markup=back_button(f"group_select_warehouse:{warehouse}:{action}"),
+                reply_markup=back_button("group_add_start"),
                 parse_mode="HTML",
             )
             user_states[user_id]["action"] = "waiting_group_link"
@@ -94,6 +91,8 @@ def register_group_handlers(bot, user_states, ADMIN_ID):
     @bot.message_handler(func=lambda message: user_states.get(message.from_user.id, {}).get("action") == "waiting_group_link")
     def process_group_link(message):
         """Guruh link qabul qilish"""
+        if message.from_user.id != ADMIN_ID:
+            return
         user_id = message.from_user.id
         data = user_states.get(user_id, {})
         group_link = message.text.strip()
@@ -120,6 +119,8 @@ def register_group_handlers(bot, user_states, ADMIN_ID):
     @bot.message_handler(func=lambda message: user_states.get(message.from_user.id, {}).get("action") == "waiting_group_id")
     def process_group_id(message):
         """Guruh ID qabul qilish"""
+        if message.from_user.id != ADMIN_ID:
+            return
         user_id = message.from_user.id
         data = user_states.get(user_id, {})
         
@@ -141,6 +142,8 @@ def register_group_handlers(bot, user_states, ADMIN_ID):
         try:
             group_info = bot.get_chat(group_id)
             group_name = group_info.title or "Noma'lum"
+            data["group_name"] = group_name
+            user_states[user_id] = data
             
             markup = telebot.types.InlineKeyboardMarkup()
             markup.add(
@@ -165,6 +168,9 @@ def register_group_handlers(bot, user_states, ADMIN_ID):
     @bot.callback_query_handler(func=lambda call: call.data == "group_add_confirm")
     def handle_group_add_confirm(call):
         """Guruh qo'shishni tasdiqlash"""
+        if call.from_user.id != ADMIN_ID:
+            bot.answer_callback_query(call.id, "Ruxsati yo'q", show_alert=True)
+            return
         user_id = call.from_user.id
         data = user_states.get(user_id, {})
         db = get_db()
@@ -173,6 +179,7 @@ def register_group_handlers(bot, user_states, ADMIN_ID):
             data.get("warehouse"),
             data.get("group_id"),
             data.get("group_link"),
+            data.get("group_name"),
         )
         
         user_states.pop(user_id, None)
@@ -185,7 +192,7 @@ def register_group_handlers(bot, user_states, ADMIN_ID):
         markup.add(telebot.types.InlineKeyboardButton("⬅️ Ortga", callback_data="groups_menu"))
         
         bot.edit_message_text(
-            "✅ Guruh muvaffaqiyatli qo'shildi!",
+            "✅ Guruh qabul qilindi va biriktirildi.\n\nAmalni davom ettiring:",
             call.message.chat.id,
             call.message.message_id,
             reply_markup=markup,
@@ -194,6 +201,9 @@ def register_group_handlers(bot, user_states, ADMIN_ID):
     @bot.callback_query_handler(func=lambda call: call.data.startswith("group_delete_select:"))
     def handle_group_delete_select(call):
         """Guruh o'chirish uchun tanlash"""
+        if call.from_user.id != ADMIN_ID:
+            bot.answer_callback_query(call.id, "Ruxsati yo'q", show_alert=True)
+            return
         parts = call.data.split(":")
         warehouse = parts[1]
         group_id = int(parts[2])
@@ -206,13 +216,15 @@ def register_group_handlers(bot, user_states, ADMIN_ID):
             return
         
         markup = telebot.types.InlineKeyboardMarkup()
-        markup.add(
-            telebot.types.InlineKeyboardButton("✅ Ha, o'chirish", callback_data=f"group_delete_confirm:{warehouse}:{group_id}"),
-            telebot.types.InlineKeyboardButton("❌ Yo'q", callback_data="group_remove_start"),
-        )
+        markup.add(telebot.types.InlineKeyboardButton("🗑️ O'chirish", callback_data=f"group_delete_confirm:{warehouse}:{group_id}"))
+        markup.add(telebot.types.InlineKeyboardButton("⬅️ Ortga", callback_data="group_remove_start"))
         
+        group_name = group.get("group_name", "Noma'lum")
         bot.edit_message_text(
-            f"⚠️ <b>{group.get('group_name', 'Noma\'lum')}</b> o'chirilsinmi?\n\n🗑️ <i>\"Guruh o'chirildi. Jarayon haqida xabar olib turish uchun {warehouse}ga guruh qo'shishingiz kerak\"</i> xabari yuboriladi.",
+            f"📦 Sklad: <b>{warehouse}</b>\n"
+            f"👥 Guruh: <b>{group_name}</b>\n"
+            f"🔗 Link: {group.get('group_link', '-')}\n\n"
+            "O'chirasizmi?",
             call.message.chat.id,
             call.message.message_id,
             reply_markup=markup,
@@ -222,6 +234,9 @@ def register_group_handlers(bot, user_states, ADMIN_ID):
     @bot.callback_query_handler(func=lambda call: call.data.startswith("group_delete_confirm:"))
     def handle_group_delete_confirm(call):
         """Guruh o'chirishni tasdiqlash"""
+        if call.from_user.id != ADMIN_ID:
+            bot.answer_callback_query(call.id, "Ruxsati yo'q", show_alert=True)
+            return
         parts = call.data.split(":")
         warehouse = parts[1]
         group_id = int(parts[2])

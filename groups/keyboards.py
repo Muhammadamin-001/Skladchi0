@@ -26,14 +26,15 @@ def group_select_menu(warehouse, action):
     warehouses = db_data.get_all_warehouses()
     
     markup = telebot.types.InlineKeyboardMarkup()
-    for warehouse_name in warehouses:
+    for warehouse_doc in warehouses:
+        warehouse_name = warehouse_doc["name"]
         markup.add(
             telebot.types.InlineKeyboardButton(
                 f"📦 {warehouse_name}",
                 callback_data=f"group_select_warehouse:{warehouse_name}:{action}"
             )
         )
-    markup.add(telebot.types.InlineKeyboardButton("⬅️ Ortga", callback_data="group_actions"))
+    markup.add(telebot.types.InlineKeyboardButton("⬅️ Ortga", callback_data="groups_menu"))
     return markup
 
 def group_confirm_menu(warehouse, group_link, action):

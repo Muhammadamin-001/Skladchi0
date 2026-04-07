@@ -26,7 +26,7 @@ class MongoDBManager:
 
     def _create_collections(self):
         """Kerakli kolleksiyalar va indekslarni tayyorlash."""
-        collections = ["users", "warehouses", "branches", "product_types", "products", "inventory", "requests", "units"]
+        collections = ["users", "warehouses", "branches", "product_types", "products", "inventory", "requests", "units", "groups"]
         for name in collections:
             if name not in self.db.list_collection_names():
                 self.db.create_collection(name)
@@ -50,6 +50,7 @@ class MongoDBManager:
         self.db["product_types"].create_index([("name", 1), ("warehouse", 1), ("branch", 1)], unique=True)
         self.db["products"].create_index([("name", 1), ("warehouse", 1), ("branch", 1), ("product_type", 1)], unique=True)
         self.db["units"].create_index([("name", 1)], unique=True)
+        self.db["groups"].create_index([("warehouse", 1), ("group_id", 1)], unique=True)
         inventory_indexes = self.db["inventory"].index_information()
         for index_name, index_data in inventory_indexes.items():
             if index_name == "_id_":
@@ -87,6 +88,12 @@ class MongoDBManager:
         self.db["users"].update_one({"user_id": user_id}, {"$set": {"approved": True}})
 
     def reject_user(self, user_id):
+        self.db["users"].delete_one({"user_id": user_id})
+        
+    def get_all_users(self):
+        return list(self.db["users"].find({}).sort("created_at", 1))
+
+    def delete_user(self, user_id):
         self.db["users"].delete_one({"user_id": user_id})
 
     # ==================== BRANCHES ====================
@@ -460,6 +467,37 @@ class MongoDBManager:
 
     def delete_unit(self, name):
         self.db["units"].delete_one({"name": name})
+    
+    # ==================== GROUPS ====================
+    def add_group(self, warehouse, group_id, group_link, group_name=None):
+        try:
+            self.db["groups"].update_one(
+                {"warehouse": warehouse, "group_id": group_id},
+                {
+                    "$set": {
+                        "warehouse": warehouse,
+                        "group_id": group_id,
+                        "group_link": group_link,
+                        "group_name": group_name or f"Group {group_id}",
+                        "updated_at": datetime.utcnow(),
+                    },
+                    "$setOnInsert": {"created_at": datetime.utcnow()},
+                },
+                upsert=True,
+            )
+            return True
+        except Exception as e:
+            logger.error(f"Guruh qo'shishda xato: {e}")
+            return False
+
+    def get_warehouse_groups(self, warehouse):
+        return list(self.db["groups"].find({"warehouse": warehouse}).sort("group_name", 1))
+
+    def get_group(self, warehouse, group_id):
+        return self.db["groups"].find_one({"warehouse": warehouse, "group_id": group_id})
+
+    def delete_group(self, warehouse, group_id):
+        self.db["groups"].delete_one({"warehouse": warehouse, "group_id": group_id})
 
 # Global
 _db_manager = None
@@ -471,42 +509,3 @@ def init_db():
 
 def get_db():
     return _db_manager
-
-# File oxirida qo'shish:
-
-def add_group(self, warehouse, group_id, group_link):
-    """Guruh qo'shish"""
-    groups = self.db['groups']
-    try:
-        group_info = {
-            'warehouse': warehouse,
-            'group_id': group_id,
-            'group_link': group_link,
-            'group_name': f"Group {group_id}",
-            'created_at': datetime.datetime.now(),
-        }
-        groups.insert_one(group_info)
-        return True
-    except Exception as e:
-        logger.error(f"Guruh qo'shishda xato: {e}")
-        return False
-
-def get_warehouse_groups(self, warehouse):
-    """Skladning barcha guruhlari"""
-    groups = self.db['groups']
-    return list(groups.find({'warehouse': warehouse}))
-
-def get_group(self, warehouse, group_id):
-    """Bitta guruhni olish"""
-    groups = self.db['groups']
-    return groups.find_one({'warehouse': warehouse, 'group_id': group_id})
-
-def delete_group(self, warehouse, group_id):
-    """Guruhni o'chirish"""
-    groups = self.db['groups']
-    groups.delete_one({'warehouse': warehouse, 'group_id': group_id})
-
-def delete_user(self, user_id):
-    """Foydalanuvchini o'chirish"""
-    users = self.db['users']
-    users.delete_one({'user_id': user_id})
