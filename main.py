@@ -2324,12 +2324,12 @@ def _notify_groups_about_inventory_change(user, warehouse, branch, product_type_
     unit = _get_product_unit(db, warehouse, branch, product_type_name, product_name)
     username = f"@{user.username}" if user.username else "NoUsername"
     change_line = "➕ Kirim" if action == "input" else "➖ Chiqim"
-    description_text = f"\n📝 Tavsif: {description}" if description else ""
+    description_text = f"\n📝 Tavsif: <blockquote>{description}</blockquote>" if description else ""
     text = (
         f"📦 <b>{product_name}</b>\n"
         f"🏭 Sklad: <b>{warehouse}</b>\n"
         f"{_branch_title(branch)}\n"
-        f"🗂️ Turi: <b>{product_type_name}</b>\n"
+        f"🗂️ Turi: <b>{product_type_name}</b>\n\n"
         f"{change_line}: <b>{quantity}</b> {unit}\n"
         f"📊 Joriy qoldiq: <b>{total_quantity}</b> {unit}{description_text}\n\n"
         f"👤 {username}\n"
@@ -2735,7 +2735,7 @@ def handle_user_remove_desc_yes(call):
         bot.delete_message(call.message.chat.id, call.message.message_id)
     except Exception:
         pass
-    sent = bot.send_message(call.message.chat.id, "\tChiqariladi: 📦 <b>{product_name}</b>\n✍️ Tavsifni matn ko'rinishida yuboring:")
+    sent = bot.send_message(call.message.chat.id, f"➖ Chiqariladi: 📦 <b>{product_name}</b>\n\n✍️ Tavsifni matn ko'rinishida yuboring:")
     _set_user_state(
         call.from_user.id,
         warehouse=warehouse,
