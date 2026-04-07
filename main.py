@@ -1951,6 +1951,10 @@ def _clear_user_action(user_id):
     warehouse = state.get("warehouse")
     user_states[user_id] = {"warehouse": warehouse} if warehouse else {}
 
+def _is_admin_list_flow(user_id):
+    state = _user_state(user_id)
+    return user_id == ADMIN_ID and state.get("list_owner") == "admin"
+
 def _branch_title(branch):
     return "🌍 Umumiy bo'lim" if branch == "common" else f"🏢 {branch}"
 
@@ -2280,7 +2284,7 @@ def handle_user_remove(call):
 @bot.callback_query_handler(func=lambda call: call.data.startswith("user_list:"))
 def handle_user_list(call):
     warehouse = call.data.split(":", 1)[1]
-    _set_user_state(call.from_user.id, warehouse=warehouse, action="user_list")
+    _set_user_state(call.from_user.id, warehouse=warehouse, action="user_list", list_owner="user")
     bot.answer_callback_query(call.id)
     _show_list_branches(call.message.chat.id, warehouse, call.message.message_id, is_admin=False)
 
@@ -2290,7 +2294,7 @@ def handle_admin_list(call):
         bot.answer_callback_query(call.id, MESSAGES["error_access_denied"], show_alert=True)
         return
     warehouse = call.data.split(":", 1)[1]
-    _set_user_state(call.from_user.id, warehouse=warehouse, action="admin_list")
+    _set_user_state(call.from_user.id, warehouse=warehouse, action="admin_list", list_owner="admin")
     bot.answer_callback_query(call.id)
     _show_list_branches(call.message.chat.id, warehouse, call.message.message_id, is_admin=True)
 
@@ -2320,7 +2324,7 @@ def handle_user_remove_branches_back(call):
 @bot.callback_query_handler(func=lambda call: call.data.startswith("user_list_branches:"))
 def handle_user_list_branches_back(call):
     warehouse = call.data.split(":", 1)[1]
-    is_admin = call.from_user.id == ADMIN_ID and _user_state(call.from_user.id).get("action") == "admin_list"
+    is_admin = _is_admin_list_flow(call.from_user.id)
     bot.answer_callback_query(call.id)
     _show_list_branches(call.message.chat.id, warehouse, call.message.message_id, is_admin=is_admin)
 
@@ -2642,26 +2646,30 @@ def handle_user_remove_description(message):
 @bot.callback_query_handler(func=lambda call: call.data.startswith("list_branch:"))
 def handle_list_branch(call):
     _, warehouse, branch = call.data.split(":", 2)
-    _set_user_state(call.from_user.id, warehouse=warehouse, branch=branch, action="list")
+    action = "admin_list" if _is_admin_list_flow(call.from_user.id) else "user_list"
+    _set_user_state(call.from_user.id, warehouse=warehouse, branch=branch, action=action)
     _show_list_types(call.message.chat.id, warehouse, branch, call.message.message_id)
     bot.answer_callback_query(call.id)
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("user_list_types:"))
 def handle_list_types_back(call):
     _, warehouse, branch = call.data.split(":", 2)
-    _set_user_state(call.from_user.id, warehouse=warehouse, branch=branch, action="list")
-    _show_list_types(call.message.chat.id, warehouse, branch, call.message.message_id)
+    action = "admin_list" if _is_admin_list_flow(call.from_user.id) else "user_list"
+    _set_user_state(call.from_user.id, warehouse=warehouse, branch=branch, action=action)
+    _safe_delete_message(call.message.chat.id, call.message.message_id)
+    _show_list_types(call.message.chat.id, warehouse, branch)
     bot.answer_callback_query(call.id)
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("user_list_type:"))
 def handle_list_type(call):
     _, warehouse, branch, product_type_name = call.data.split(":", 3)
+    action = "admin_list" if _is_admin_list_flow(call.from_user.id) else "user_list"
     _set_user_state(
         call.from_user.id,
         warehouse=warehouse,
         branch=branch,
         product_type=product_type_name,
-        action="list",
+        action= action,
     )
     _show_list_products(call.message.chat.id, warehouse, branch, product_type_name, call.message.message_id)
     bot.answer_callback_query(call.id)
@@ -2669,13 +2677,14 @@ def handle_list_type(call):
 @bot.callback_query_handler(func=lambda call: call.data.startswith("user_list_product:"))
 def handle_list_product(call):
     _, warehouse, branch, product_type_name, product_name = call.data.split(":", 4)
+    action = "admin_list" if _is_admin_list_flow(call.from_user.id) else "user_list"
     _set_user_state(
         call.from_user.id,
         warehouse=warehouse,
         branch=branch,
         product_type=product_type_name,
         product_name=product_name,
-        action="list",
+        action= action,
     )
     _show_list_product_details(
         call.message.chat.id,
