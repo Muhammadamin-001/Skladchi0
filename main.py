@@ -351,7 +351,7 @@ def handle_warehouse_add(call):
     except:
         pass
     
-    user_states[user_id] = "waiting_warehouse_name"
+    user_states[user_id] = {"action": "waiting_warehouse_name"}
     logger.info(f"✅ State set: waiting_warehouse_name")
     
     bot.send_message(
@@ -360,7 +360,7 @@ def handle_warehouse_add(call):
         reply_markup=back_button("warehouse_list")
     )
 
-@bot.message_handler(func=lambda message: user_states.get(message.from_user.id) == "waiting_warehouse_name")
+@bot.message_handler(func=lambda message: user_states.get(message.from_user.id, {}).get("action") == "waiting_warehouse_name")
 def process_warehouse_add(message):
     """Sklad nomini saqlash"""
     user_id = message.from_user.id
@@ -368,7 +368,7 @@ def process_warehouse_add(message):
     
     logger.info(f"🔴 WAREHOUSE MESSAGE: user_id={user_id}, text='{name}', state={user_states.get(user_id)}")
     
-    if user_states.get(user_id) != "waiting_warehouse_name":
+    if user_states.get(user_id, {}).get("action") != "waiting_warehouse_name":
         logger.warning(f"❌ State mismatch")
         bot.send_message(message.chat.id, "❌ Avval /start bosing")
         return
