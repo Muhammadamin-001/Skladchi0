@@ -8,6 +8,11 @@ from .keyboards import (
 
 logger = logging.getLogger(__name__)
 
+def _display_user_name(username, first_name=None):
+    if username and username != "NoUsername":
+        return f"@{username}"
+    return first_name or "Foydalanuvchi"
+
 def register_admin_users_handlers(bot, user_states, ADMIN_ID):
     """Foydalanuvchilar boshqarish handlerlari"""
     
@@ -18,8 +23,8 @@ def register_admin_users_handlers(bot, user_states, ADMIN_ID):
             return "👥 Foydalanuvchilar ro'yxati bo'sh."
         lines = ["👥 <b>Foydalanuvchilar ro'yxati:</b>\n"]
         for i, user in enumerate(users, 1):
-            username = user.get("username") or "NoUsername"
-            lines.append(f"{i}. @{username}, <blockquote>{user.get('user_id')}</blockquote>")
+            display_name = _display_user_name(user.get("username"), user.get("first_name"))
+            lines.append(f"{i}. {display_name}, <a>{user.get('user_id')}</a>")
         return "\n".join(lines)
     
     @bot.callback_query_handler(func=lambda call: call.data == "users_list_menu")
@@ -81,10 +86,10 @@ def register_admin_users_handlers(bot, user_states, ADMIN_ID):
         markup.add(telebot.types.InlineKeyboardButton("✅ Ha", callback_data=f"user_delete_confirm:{target_user_id}"))
         markup.add(telebot.types.InlineKeyboardButton("⬅️ Ortga", callback_data="users_list_menu"))
         
-        username = user.get('username', 'NoUsername')
+        display_name = _display_user_name(user.get("username"), user.get("first_name"))
         bot.send_message(
             message.chat.id,
-            f"👤 Username: <b>@{username}</b>\n🆔 ID: <b>{target_user_id}</b>\n\nO'chirasizmi?",
+            f"👤 Foydalanuvchi: <b>{display_name}</b>\n🆔 ID: <b>{target_user_id}</b>\n\nO'chirasizmi?",
             reply_markup=markup,
             parse_mode="HTML",
         )

@@ -2092,6 +2092,11 @@ def _is_admin_list_flow(user_id):
     state = _user_state(user_id)
     return user_id == ADMIN_ID and state.get("list_owner") == "admin"
 
+def _display_actor_name(username, first_name=None):
+    if username and username != "NoUsername":
+        return f"@{username}"
+    return first_name or "Foydalanuvchi"
+
 def _branch_title(branch):
     return "🌍 Umumiy bo'lim" if branch == "common" else f"🏢 {branch}"
 
@@ -2322,7 +2327,7 @@ def _notify_groups_about_inventory_change(user, warehouse, branch, product_type_
     product = db.get_product_by_name(product_name, warehouse, branch, product_type_name)
     image_id = _get_user_flow_image(product, ptype)
     unit = _get_product_unit(db, warehouse, branch, product_type_name, product_name)
-    username = f"@{user.username}" if user.username else "NoUsername"
+    username = _display_actor_name(user.username, getattr(user, "first_name", None))
     change_line = "➕ Kirim" if action == "input" else "➖ Chiqim"
     description_text = f"\n📝 Tavsif: <blockquote>{description}</blockquote>" if description else ""
     text = (
@@ -2400,8 +2405,20 @@ def handle_user_warehouse_select(call):
 @bot.callback_query_handler(func=lambda call: call.data.startswith("user_main:"))
 def handle_user_main_with_warehouse(call):
     warehouse = call.data.split(":", 1)[1]
-    _clear_user_action(call.from_user.id)
+    db = get_db()
+    user_id = call.from_user.id
+    user = db.get_user(user_id)
+    _clear_user_action(user_id)
     bot.answer_callback_query(call.id)
+    if user_id == ADMIN_ID or not user:
+        bot.edit_message_text(
+            f"👤 Salom, Administrator!\n\n🏭 Sklad: <b>{warehouse}</b>\n\nIshlash uchun tugmani tanlang:",
+            call.message.chat.id,
+            call.message.message_id,
+            reply_markup=admin_main_menu(warehouse),
+            parse_mode="HTML",
+        )
+        return
     _show_user_main(call.message.chat.id, warehouse, call.message.message_id)
 
  #==== User Asosiy tugma orqali qaytsa ===== 
@@ -2409,9 +2426,20 @@ def handle_user_main_with_warehouse(call):
 def handle_user_home(call):
     """Foydalanuvchi uchun Asosiy: eski xabarni o'chirib asosiy sahifani qayta yuborish."""
     warehouse = call.data.split(":", 1)[1]
-    _set_user_state(call.from_user.id, warehouse=warehouse, action=None)
+    db = get_db()
+    user_id = call.from_user.id
+    user = db.get_user(user_id)
+    _set_user_state(user_id, warehouse=warehouse, action=None)
     _safe_delete_message(call.message.chat.id, call.message.message_id)
-    _show_user_main(call.message.chat.id, warehouse)
+    if user_id == ADMIN_ID or not user:
+        bot.send_message(
+            call.message.chat.id,
+            f"👤 Salom, Administrator!\n\n🏭 Sklad: <b>{warehouse}</b>\n\nIshlash uchun tugmani tanlang:",
+            reply_markup=admin_main_menu(warehouse),
+            parse_mode="HTML",
+        )
+    else:
+        _show_user_main(call.message.chat.id, warehouse)
     bot.answer_callback_query(call.id)
 
 
@@ -2851,11 +2879,11 @@ def handle_send_request(call):
     """So'rov yuborish"""
     user_id = call.from_user.id
     username = call.from_user.username or "NoUsername"
-    
+    display_name = _display_actor_name(username, call.from_user.first_name)
     user_states.pop(user_id, None)
     
     db = get_db()
-    db.add_request(user_id, username)
+    db.add_request(user_id, display_name)
     
     bot.answer_callback_query(call.id)
     bot.edit_message_text(
@@ -2872,7 +2900,7 @@ def handle_send_request(call):
     
     bot.send_message(
         ADMIN_ID,
-        f"📩 Yangi so'rov:\n\n👤 Username: @{username}\n🆔 User ID: {user_id}",
+        f"📩 Yangi so'rov:\n\n👤 Foydalanuvchi: {display_name}\n🆔 User ID: {user_id}",
         reply_markup=markup
     )
 

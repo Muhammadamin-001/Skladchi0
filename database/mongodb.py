@@ -117,6 +117,7 @@ class MongoDBManager:
                 self.db["branches"].update_many({"warehouse": old_name}, {"$set": {"warehouse": new_name}})
                 self.db["product_types"].update_many({"warehouse": old_name}, {"$set": {"warehouse": new_name}})
                 self.db["products"].update_many({"warehouse": old_name}, {"$set": {"warehouse": new_name}})
+                self.db["inventory"].update_many({"warehouse": old_name}, {"$set": {"warehouse": new_name}})
             return result.modified_count > 0
         except DuplicateKeyError:
             return False
@@ -126,7 +127,8 @@ class MongoDBManager:
         self.db["branches"].delete_many({"warehouse": name})
         self.db["product_types"].delete_many({"warehouse": name})
         self.db["products"].delete_many({"warehouse": name})
-
+        self.db["inventory"].delete_many({"warehouse": name})
+        
     # BRANCHES
     def add_branch(self, name, warehouse=None):
         try:
@@ -150,13 +152,13 @@ class MongoDBManager:
             if warehouse is not None:
                 query["warehouse"] = warehouse
             result = self.db["branches"].update_one(query, {"$set": {"name": new_name}})
-            if result.modified_count and warehouse is not None:
-                self.db["product_types"].update_many(
-                    {"warehouse": warehouse, "branch": old_name}, {"$set": {"branch": new_name}}
-                )
-                self.db["products"].update_many(
-                    {"warehouse": warehouse, "branch": old_name}, {"$set": {"branch": new_name}}
-                )
+            if result.modified_count:
+                linked_query = {"branch": old_name}
+                if warehouse is not None:
+                    linked_query["warehouse"] = warehouse
+                self.db["product_types"].update_many(linked_query, {"$set": {"branch": new_name}})
+                self.db["products"].update_many(linked_query, {"$set": {"branch": new_name}})
+                self.db["inventory"].update_many(linked_query, {"$set": {"branch": new_name}})
             return result.modified_count > 0
         except DuplicateKeyError:
             return False
@@ -166,9 +168,12 @@ class MongoDBManager:
         if warehouse is not None:
             query["warehouse"] = warehouse
         self.db["branches"].delete_one(query)
+        linked_query = {"branch": name}
         if warehouse is not None:
-            self.db["product_types"].delete_many({"warehouse": warehouse, "branch": name})
-            self.db["products"].delete_many({"warehouse": warehouse, "branch": name})
+            linked_query["warehouse"] = warehouse
+        self.db["product_types"].delete_many(linked_query)
+        self.db["products"].delete_many(linked_query)
+        self.db["inventory"].delete_many(linked_query)
 
     # PRODUCT TYPES
     def add_product_type(self, name, image_id=None, warehouse=None, branch=None, common_code=None):
