@@ -24,7 +24,7 @@ def register_admin_users_handlers(bot, user_states, ADMIN_ID):
         lines = ["👥 <b>Foydalanuvchilar ro'yxati:</b>\n"]
         for i, user in enumerate(users, 1):
             display_name = _display_user_name(user.get("username"), user.get("first_name"))
-            lines.append(f"{i}. {display_name}, <a>{user.get('user_id')}</a>")
+            lines.append(f"{i}. {display_name}, <code>{user.get('user_id')}</code>")
         return "\n".join(lines)
     
     @bot.callback_query_handler(func=lambda call: call.data == "users_list_menu")
