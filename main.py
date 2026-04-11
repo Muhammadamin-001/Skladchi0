@@ -878,20 +878,32 @@ def handle_product_type_common_code_no(call):
     user_id = call.from_user.id
     data = user_states.get(user_id, {})
     db = get_db()
-    db.add_product_type(
+    warehouse = data.get("warehouse")
+    branch = data.get("branch", "common")
+    added = db.add_product_type(
         data.get("product_type_name"),
         data.get("product_type_image_id"),
-        data.get("warehouse"),
-        data.get("branch", "common"),
+        warehouse,
+        branch,
         None,
     )
     
-    warehouse = data.get("warehouse")
-    branch = data.get("branch", "common")
-    
-    user_states.pop(user_id, None)
-    
     _safe_delete_message(call.message.chat.id, call.message.message_id)
+    
+    if not added:
+        user_states[user_id] = {
+            "action": "waiting_product_type_name",
+            "warehouse": warehouse,
+            "branch": branch,
+        }
+        bot.send_message(
+            call.message.chat.id,
+            f"⚠️ '{data.get('product_type_name')}' nomli tur oldin ishlatilgan.\n\n✍️ Boshqa tur nomini kiriting:",
+            reply_markup=back_button(f"product_branch_select:{warehouse}:{branch}"),
+        )
+        return
+
+    user_states.pop(user_id, None)
     
     bot.send_message(
         call.message.chat.id,
@@ -908,17 +920,29 @@ def process_product_type_common_code(message):
         bot.send_message(message.chat.id, "❌ Kod bo'sh bo'lishi mumkin emas")
         return
     db = get_db()
-    db.add_product_type(
+    warehouse = data.get("warehouse")
+    branch = data.get("branch", "common")
+    added = db.add_product_type(
         data.get("product_type_name"),
         data.get("product_type_image_id"),
-        data.get("warehouse"),
-        data.get("branch", "common"),
+        warehouse,
+        branch,
         code,
     )
     
     
-    warehouse = data.get("warehouse")
-    branch = data.get("branch", "common")
+    if not added:
+        user_states[user_id] = {
+            "action": "waiting_product_type_name",
+            "warehouse": warehouse,
+            "branch": branch,
+        }
+        bot.send_message(
+            message.chat.id,
+            f"⚠️ '{data.get('product_type_name')}' nomli tur oldin ishlatilgan.\n\n✍️ Boshqa tur nomini kiriting:",
+            reply_markup=back_button(f"product_branch_select:{warehouse}:{branch}"),
+        )
+        return
     
     user_states.pop(user_id, None)
     
@@ -1311,12 +1335,11 @@ def handle_product_type_delete_confirm(call):
     db = get_db()
     db.delete_product_type(product_type, warehouse, branch)
     
-    bot.edit_message_text(
-        f"✅ <b>{product_type}</b> turi o'chirildi.\n\nTur ro'yxati:",
+    _show_product_types_message(
         call.message.chat.id,
         call.message.message_id,
-        reply_markup=product_types_menu(warehouse, branch),
-        parse_mode="HTML",
+        warehouse,
+        branch,
     )
     
 @bot.callback_query_handler(func=lambda call: call.data.startswith("product_type_delete_cancel:"))
@@ -1550,19 +1573,32 @@ def handle_product_confirm_add(call):
     data = user_states.get(user_id, {})
     
     db = get_db()
-    db.add_product(
+    warehouse = data.get("warehouse")
+    branch = data.get("branch")
+    product_type = data.get("product_type")
+    added = db.add_product(
         data.get("product_name"),
         data.get("product_code"),
-        data.get("product_type"),
-        data.get("warehouse"),
-        data.get("branch"),
+        product_type,
+        warehouse,
+        branch,
         data.get("product_image_id"),
         data.get("product_unit", "dona"),
     )
     
-    warehouse = data.get("warehouse")
-    branch = data.get("branch")
-    product_type = data.get("product_type")
+    if not added:
+        user_states[user_id] = {
+            "action": "adding_product",
+            "warehouse": warehouse,
+            "branch": branch,
+            "product_type": product_type,
+        }
+        bot.send_message(
+            call.message.chat.id,
+            f"⚠️ '{data.get('product_name')}' nomli mahsulot oldin ishlatilgan.\n\n✍️ Boshqa mahsulot nomini kiriting:",
+            reply_markup=back_button(f"product_type_back:{warehouse}:{branch}"),
+        )
+        return
     
     user_states.pop(user_id, None)
     
