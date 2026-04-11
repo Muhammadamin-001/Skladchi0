@@ -522,7 +522,7 @@ def list_branches_menu(warehouse, is_admin=False):
         if is_admin:
             markup.add(
                 telebot.types.InlineKeyboardButton("📊 Hisobot", callback_data=f"admin_list_soon:{warehouse}:hisobot"),
-                telebot.types.InlineKeyboardButton("📦 Skladda", callback_data=f"admin_list_soon:{warehouse}:skladda"),
+                telebot.types.InlineKeyboardButton("📦 Sklad in", callback_data=f"admin_list_soon:{warehouse}:skladda"),
             )
         markup.add(telebot.types.InlineKeyboardButton(
             MESSAGES["button_back"],
