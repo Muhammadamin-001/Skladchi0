@@ -1270,13 +1270,34 @@ def handle_product_type_delete(call):
         telebot.types.InlineKeyboardButton("❌ Yo'q", callback_data=f"product_type_delete_cancel:{warehouse}:{branch}:{product_type}"),
     )
 
-    bot.edit_message_text(
-        f"⚠️ <b>{product_type}</b> turini o'chirasizmi?",
-        call.message.chat.id,
-        call.message.message_id,
-        reply_markup=markup,
-        parse_mode="HTML",
-    )
+    confirm_text = f"⚠️ <b>{product_type}</b> turini o'chirasizmi?"
+    try:
+        bot.edit_message_caption(
+            caption=confirm_text,
+            chat_id=call.message.chat.id,
+            message_id=call.message.message_id,
+            reply_markup=markup,
+            parse_mode="HTML",
+        )
+        return
+    except Exception:
+        pass
+
+    try:
+        bot.edit_message_text(
+            confirm_text,
+            call.message.chat.id,
+            call.message.message_id,
+            reply_markup=markup,
+            parse_mode="HTML",
+        )
+    except Exception:
+        bot.send_message(
+            call.message.chat.id,
+            confirm_text,
+            reply_markup=markup,
+            parse_mode="HTML",
+        )
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("product_type_delete_confirm:"))
 def handle_product_type_delete_confirm(call):

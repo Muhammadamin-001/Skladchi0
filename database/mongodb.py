@@ -276,6 +276,13 @@ class MongoDBManager:
                 **({"branch": branch} if branch is not None else {}),
             }
         )
+        self.db["inventory"].delete_many(
+            {
+                "product_type": name,
+                **({"warehouse": warehouse} if warehouse is not None else {}),
+                **({"branch": branch} if branch is not None else {}),
+            }
+        )
 
     # PRODUCTS
     def add_product(self, name, code, product_type, warehouse=None, branch=None, image_id=None, unit="dona"):
