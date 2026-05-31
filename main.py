@@ -2,7 +2,9 @@ import telebot
 import logging
 import os
 import time
+import secrets
 from flask import Flask, request, redirect
+from werkzeug.security import generate_password_hash
 from config.settings import BOT_TOKEN, ADMIN_ID, MESSAGES
 from database.mongodb import init_db, get_db
 from keyboards.telebot_keyboards import (
@@ -34,7 +36,7 @@ from keyboards.telebot_keyboards import (
 from groups.handlers import register_group_handlers
 from admin_users.handlers import register_admin_users_handlers
 from web.routes import register_web_routes
-
+from web.app_links import get_app_button_kwargs, make_login_message
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
@@ -53,6 +55,26 @@ except Exception as e:
 
 # ==================== USER STATE STORAGE ====================
 user_states = {}
+
+
+def _app_only_menu(role="customer"):
+    """Faqat web/mini ilova tugmasini ko'rsatadigan menyu."""
+    markup = telebot.types.InlineKeyboardMarkup()
+    button_kwargs = get_app_button_kwargs(role)
+    if button_kwargs:
+        markup.add(telebot.types.InlineKeyboardButton("📱 Ilova", **button_kwargs))
+    return markup
+
+
+def _request_role_menu(user_id):
+    """Admin tasdiqdan keyin foydalanuvchi toifasini tanlash menyusi."""
+    markup = telebot.types.InlineKeyboardMarkup()
+    markup.add(
+        telebot.types.InlineKeyboardButton("👷 Xodim", callback_data=f"approve_user_role:{user_id}:employee"),
+        telebot.types.InlineKeyboardButton("🧑‍💼 Mijoz", callback_data=f"approve_user_role:{user_id}:customer"),
+    )
+    markup.add(telebot.types.InlineKeyboardButton("❌ Rad Qilish", callback_data=f"reject_user:{user_id}"))
+    return markup
 
 def _safe_delete_message(chat_id, message_id):
     """Xabarni imkon qadar o'chiradi (xatolarni yutadi)."""
@@ -233,11 +255,19 @@ def handle_start(message):
             reply_markup=warehouse_list_menu()
         )
     elif user and user.get("approved"):
-        bot.send_message(
-            user_id,
-            f"👋 Salom, {first_name}!\n\nAvval skladni tanlang:",
-            reply_markup=user_warehouse_menu(),
-        )
+        role = user.get("role") or "employee"
+        if role == "customer":
+            bot.send_message(
+                user_id,
+                f"👋 Salom, {first_name}!\n\nIlovaga kirish uchun tugmani bosing:",
+                reply_markup=_app_only_menu("customer"),
+            )
+        else:
+            bot.send_message(
+                user_id,
+                f"👋 Salom, {first_name}!\n\nAvval skladni tanlang:",
+                reply_markup=user_warehouse_menu(),
+            )
     else:
         if not user:
             db.add_user(user_id, username, first_name, approved=False)
@@ -2964,24 +2994,55 @@ def handle_send_request(call):
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("approve_user:"))
 def handle_approve_user(call):
-    """Foydalanuvchini tasdiqlash"""
+    """Admin tasdiqlagandan keyin foydalanuvchi toifasini so'rash."""
     if call.from_user.id != ADMIN_ID:
         bot.answer_callback_query(call.id, MESSAGES["error_access_denied"], show_alert=True)
         return
     
     user_id = int(call.data.split(":")[1])
+    bot.answer_callback_query(call.id, "Toifani tanlang")
+    bot.edit_message_text(
+        f"✅ Tasdiqlash: <code>{user_id}</code>\n\nQaysi toifaga kiritasiz?",
+        call.message.chat.id,
+        call.message.message_id,
+        reply_markup=_request_role_menu(user_id),
+        parse_mode="HTML",
+    )
+
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith("approve_user_role:"))
+def handle_approve_user_role(call):
+    """Tanlangan toifa bo'yicha foydalanuvchini tasdiqlash va link yuborish."""
+    if call.from_user.id != ADMIN_ID:
+        bot.answer_callback_query(call.id, MESSAGES["error_access_denied"], show_alert=True)
+        return
+
+    _, user_id_text, role = call.data.split(":", 2)
+    if role not in {"employee", "customer"}:
+        bot.answer_callback_query(call.id, "Noto'g'ri toifa", show_alert=True)
+        return
+
+    user_id = int(user_id_text)
+    password = secrets.token_urlsafe(6)
+    
     db = get_db()
-    db.approve_user(user_id)
+    db.approve_user(user_id, role=role, password_hash=generate_password_hash(password))
     db.delete_request(user_id)
     
+    role_label = "xodim" if role == "employee" else "mijoz"
     bot.answer_callback_query(call.id, "✅ Tasdiqlandi")
     bot.edit_message_text(
-        f"✅ Foydalanuvchi {user_id} tasdiqlandı",
+        f"✅ Foydalanuvchi <code>{user_id}</code> tasdiqlandi.\n👤 Toifa: <b>{role_label}</b>",
         call.message.chat.id,
-        call.message.message_id
+        call.message.message_id,
+        parse_mode="HTML",
     )
     
-    bot.send_message(user_id, MESSAGES["user_approved"])
+    login = str(user_id)
+    user = db.get_user(user_id)
+    if user and user.get("username") and user.get("username") != "NoUsername":
+        login = user["username"]
+    bot.send_message(user_id, make_login_message(role, login, password), reply_markup=_app_only_menu(role), parse_mode="HTML")
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("reject_user:"))
 def handle_reject_user(call):

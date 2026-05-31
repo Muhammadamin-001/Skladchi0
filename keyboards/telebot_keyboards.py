@@ -1,11 +1,20 @@
 import telebot
 from database.mongodb import get_db
 from config.settings import MESSAGES
+from web.app_links import get_app_button_kwargs
 import logging
 
 logger = logging.getLogger(__name__)
 
 # ==================== WAREHOUSE KEYBOARDS ====================
+
+def add_app_button(markup, role=None):
+    """Asosiy menyularga Telegram Mini App (yoki URL) tugmasini qo'shadi."""
+    button_kwargs = get_app_button_kwargs(role)
+    if button_kwargs:
+        markup.add(telebot.types.InlineKeyboardButton("📱 Ilova", **button_kwargs))
+    return markup
+
 
 def warehouse_list_menu():
     """✅ Sklad ro'yxati - PLUS TUGMA BILAN!"""
@@ -38,6 +47,7 @@ def warehouse_list_menu():
             "⚙️ Boshqarish",
             callback_data="admin_settings"
         ))
+        add_app_button(markup, "admin")
         return markup
     except Exception as e:
         logger.error(f"❌ Error in warehouse_list_menu: {e}")
@@ -123,6 +133,7 @@ def admin_main_menu(warehouse):
             callback_data=f"admin_list:{warehouse}"
         )
     )
+    add_app_button(markup, "admin")
     markup.add(telebot.types.InlineKeyboardButton(
         "⬅️ Skladlar",
         callback_data="warehouse_list"
@@ -315,6 +326,7 @@ def user_main_menu(warehouse):
         MESSAGES["button_list"],
         callback_data=f"user_list:{warehouse}"
     ))
+    add_app_button(markup, "employee")
     return markup
 
 def user_request_menu():
@@ -338,6 +350,7 @@ def user_warehouse_menu():
                 text=f"🏭 {warehouse['name']}",
                 callback_data=f"user_warehouse:{warehouse['name']}"
             ))
+        add_app_button(markup, "employee")
         return markup
     except Exception as e:
         logger.error(f"❌ Error in user_warehouse_menu: {e}")
