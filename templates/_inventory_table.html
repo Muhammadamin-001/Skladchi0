@@ -1,0 +1,19 @@
+<div class="table-wrap">
+  <table>
+    <thead>
+      <tr><th>Mahsulot</th><th>Turi</th><th>Filial</th><th>Miqdor</th></tr>
+    </thead>
+    <tbody>
+      {% for item in inventory %}
+      <tr>
+        <td>{{ item.product_name }}</td>
+        <td>{{ item.product_type or '-' }}</td>
+        <td>{{ item.branch }}</td>
+        <td><b>{{ item.quantity }}</b></td>
+      </tr>
+      {% else %}
+      <tr><td colspan="4">Skladda yozuv yo'q.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>

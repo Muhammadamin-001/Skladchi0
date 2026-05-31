@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="uz">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ title or "Sklad CRM" }}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <div class="shell">
+    {% if user %}
+    <aside class="sidebar">
+      <div class="brand"><span>📦</span><b>Sklad CRM</b></div>
+      <div class="profile">{{ display_name }}<small>{{ role|capitalize }}</small></div>
+      <nav>
+        <a href="{{ url_for('web_dashboard') }}">🏠 Asosiy</a>
+        {% if role in ['admin','employee'] %}<a href="{{ url_for('web_products') }}">📦 Mahsulotlar</a>{% endif %}
+        {% if role == 'admin' %}<a href="{{ url_for('web_management') }}">⚙️ Boshqarish</a>{% endif %}
+        {% if role == 'admin' %}<a href="{{ url_for('web_reports') }}">📊 Hisobot</a>{% endif %}
+        {% if role in ['admin','employee'] %}<a href="{{ url_for('web_inventory') }}">🏬 Sklad</a>{% endif %}
+        <a href="{{ url_for('web_orders') }}">🧾 Buyurtmalar</a>
+        <a href="{{ url_for('web_logout') }}">🚪 Chiqish</a>
+      </nav>
+      <div class="hint">Bot tugmalari webda ham shu tartibda: Asosiy, Mahsulotlar, Boshqarish, Hisobot, Sklad.</div>
+    </aside>
+    {% endif %}
+    <main class="content {{ 'auth' if not user }}">
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}<div class="flash-wrap">{% for category, message in messages %}<div class="flash {{ category }}">{{ message }}</div>{% endfor %}</div>{% endif %}
+      {% endwith %}
+      {% block content %}{% endblock %}
+    </main>
+  </div>
+  <script src="{{ url_for('static', filename='app.js') }}"></script>
+</body>
+</html>

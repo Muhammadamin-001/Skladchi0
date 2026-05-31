@@ -26,7 +26,7 @@ class MongoDBManager:
 
     def _create_collections(self):
         """Kerakli kolleksiyalar va indekslarni tayyorlash."""
-        collections = ["users", "warehouses", "branches", "product_types", "products", "inventory", "requests", "units", "groups"]
+        collections = ["users", "warehouses", "branches", "product_types", "products", "inventory", "requests", "units", "groups", "orders"]
         for name in collections:
             if name not in self.db.list_collection_names():
                 self.db.create_collection(name)
@@ -34,7 +34,8 @@ class MongoDBManager:
         # Users / requests
         self.db["users"].create_index("user_id", unique=True)
         self.db["requests"].create_index("user_id", unique=True)
-
+        self.db["orders"].create_index([("status", 1), ("created_at", -1)])
+        self.db["orders"].create_index([("customer_id", 1), ("created_at", -1)])
         # Warehouse/branch/type/product unique constraints per kontekst
         # Legacy tizimlarda branches uchun faqat `name` unique index qolib ketgan bo'lishi mumkin.
         # Bu holatda turli skladlarda bir xil filial nomi qo'shib bo'lmaydi, shuning uchun tozalaymiz.
@@ -95,6 +96,24 @@ class MongoDBManager:
 
     def delete_user(self, user_id):
         self.db["users"].delete_one({"user_id": user_id})
+        
+    def update_user_access(self, user_id, role=None, password_hash=None, approved=None):
+        """Web panel uchun foydalanuvchi roli va parolini saqlash."""
+        update = {"updated_at": datetime.utcnow()}
+        if role is not None:
+            update["role"] = role
+        if password_hash is not None:
+            update["password_hash"] = password_hash
+        if approved is not None:
+            update["approved"] = approved
+        self.db["users"].update_one({"user_id": user_id}, {"$set": update})
+
+    def find_user_for_login(self, login):
+        """username yoki user_id orqali web foydalanuvchini topish."""
+        query = {"username": login.lstrip("@")}
+        if str(login).isdigit():
+            query = {"$or": [{"user_id": int(login)}, {"username": login.lstrip("@")}]}
+        return self.db["users"].find_one(query)
 
     # ==================== BRANCHES ====================
     
@@ -402,6 +421,13 @@ class MongoDBManager:
             query["warehouse"] = warehouse
         return list(self.db["inventory"].find(query).sort("product_name", 1))
 
+    
+    def get_inventory_by_warehouse(self, warehouse=None):
+        query = {}
+        if warehouse is not None:
+            query["warehouse"] = warehouse
+        return list(self.db["inventory"].find(query).sort([("branch", 1), ("product_name", 1)]))
+
     def get_total_inventory_by_product(self, product_name, warehouse=None, product_type=None):
         return self.get_inventory(product_name, warehouse, WAREHOUSE_NAME, product_type)
 
@@ -510,6 +536,63 @@ class MongoDBManager:
 
     def delete_group(self, warehouse, group_id):
         self.db["groups"].delete_one({"warehouse": warehouse, "group_id": group_id})
+
+# ==================== WEB ORDERS / CRM ====================
+
+    def create_order(self, customer_id, customer_name, title, description, warehouse=None, branch=None):
+        doc = {
+            "customer_id": customer_id,
+            "customer_name": customer_name,
+            "title": title,
+            "description": description,
+            "warehouse": warehouse,
+            "branch": branch,
+            "status": "new",
+            "assigned_to": None,
+            "events": [
+                {"status": "new", "text": "Buyurtma mijoz tomonidan yuborildi", "at": datetime.utcnow()}
+            ],
+            "created_at": datetime.utcnow(),
+            "updated_at": datetime.utcnow(),
+        }
+        result = self.db["orders"].insert_one(doc)
+        return str(result.inserted_id)
+
+    def get_orders(self, status=None, customer_id=None, employee_view=False, limit=100):
+        query = {}
+        if status:
+            query["status"] = status
+        if customer_id:
+            query["customer_id"] = customer_id
+        if employee_view:
+            query["status"] = {"$in": ["approved", "in_progress"]}
+        return list(self.db["orders"].find(query).sort("created_at", -1).limit(limit))
+
+    def get_order(self, order_id):
+        try:
+            return self.db["orders"].find_one({"_id": ObjectId(order_id)})
+        except Exception:
+            return None
+
+    def update_order_status(self, order_id, status, actor_name, note=None, assigned_to=None):
+        event_text = note or status
+        update = {
+            "$set": {"status": status, "updated_at": datetime.utcnow()},
+            "$push": {"events": {"status": status, "text": event_text, "actor": actor_name, "at": datetime.utcnow()}},
+        }
+        if assigned_to is not None:
+            update["$set"]["assigned_to"] = assigned_to
+        try:
+            result = self.db["orders"].update_one({"_id": ObjectId(order_id)}, update)
+            return result.modified_count > 0
+        except Exception:
+            return False
+
+    def get_order_stats(self):
+        statuses = ["new", "approved", "in_progress", "done", "rejected"]
+        stats = {key: self.db["orders"].count_documents({"status": key}) for key in statuses}
+        stats["total"] = self.db["orders"].count_documents({})
+        return stats
 
 # Global
 _db_manager = None

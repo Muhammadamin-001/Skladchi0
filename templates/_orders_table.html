@@ -1,0 +1,37 @@
+<div class="table-wrap">
+  <table>
+    <thead>
+      <tr><th>Nomi</th><th>Mijoz</th><th>Status</th><th>Sklad/filial</th><th>Amal</th></tr>
+    </thead>
+    <tbody>
+      {% for order in orders %}
+      <tr>
+        <td><b>{{ order.title }}</b><small>{{ order.description }}</small></td>
+        <td>{{ order.customer_name }}</td>
+        <td><span class="badge {{ order.status }}">{{ order.status }}</span></td>
+        <td>{{ order.warehouse or '-' }} / {{ order.branch or '-' }}</td>
+        <td>
+          {% if role == 'admin' and order.status == 'new' %}
+          <form method="post" action="{{ url_for('web_update_order', order_id=order._id) }}" class="inline">
+            <button name="status" value="approved">Tasdiqlash</button>
+            <button class="ghost" name="status" value="rejected">Rad</button>
+          </form>
+          {% endif %}
+          {% if role == 'employee' and order.status == 'approved' %}
+          <form method="post" action="{{ url_for('web_update_order', order_id=order._id) }}">
+            <button name="status" value="in_progress">Jarayonda</button>
+          </form>
+          {% endif %}
+          {% if role in ['admin','employee'] and order.status in ['approved','in_progress'] %}
+          <form method="post" action="{{ url_for('web_update_order', order_id=order._id) }}">
+            <button name="status" value="done">Tugatdim</button>
+          </form>
+          {% endif %}
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="5">Buyurtma yo'q.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>

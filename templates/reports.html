@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block content %}
+<header class="top">
+  <div>
+    <h1>Hisobot</h1>
+    <p>Kunlik, oylik va umumiy hisobotlar uchun MVP poydevor.</p>
+  </div>
+</header>
+
+<div class="cards">
+  <div class="card"><b>{{ stats.total }}</b><span>Umumiy</span></div>
+  <div class="card"><b>{{ stats.done }}</b><span>Tugagan</span></div>
+  <div class="card"><b>{{ stats.rejected }}</b><span>Rad etilgan</span></div>
+  <div class="card"><b>{{ stats.in_progress }}</b><span>Jarayonda</span></div>
+</div>
+
+<section class="panel">
+  <h2>Keyingi rivojlantirish</h2>
+  <ul>
+    <li>Kunlik va oylik sanaga ko'ra filter.</li>
+    <li>Excel/PDF eksport.</li>
+    <li>Mahsulot kirim-chiqim audit jurnali.</li>
+  </ul>
+</section>
+{% endblock %}

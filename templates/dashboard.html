@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block content %}
+<header class="top">
+  <div>
+    <h1>Asosiy</h1>
+    <p>CRM va sklad jarayonlari umumiy ko'rinishi.</p>
+  </div>
+</header>
+
+<div class="cards">
+  <div class="card"><b>{{ stats.total }}</b><span>Jami buyurtma</span></div>
+  <div class="card"><b>{{ stats.new }}</b><span>Yangi</span></div>
+  <div class="card"><b>{{ stats.approved }}</b><span>Tasdiqlangan</span></div>
+  <div class="card"><b>{{ stats.in_progress }}</b><span>Jarayonda</span></div>
+</div>
+
+<div class="grid two">
+  <section class="panel">
+    <h2>Oxirgi buyurtmalar</h2>
+    {% include '_orders_table.html' %}
+  </section>
+  {% if role in ['admin','employee'] %}
+  <section class="panel">
+    <h2>Sklad qoldiqlari</h2>
+    {% include '_inventory_table.html' %}
+  </section>
+  {% endif %}
+</div>
+{% endblock %}

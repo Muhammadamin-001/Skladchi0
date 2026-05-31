@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+{% block content %}
+<header class="top">
+  <div>
+    <h1>Mahsulotlar</h1>
+    <p>Mahsulotlar, filiallar va turkumlar shu bo'limda.</p>
+  </div>
+</header>
+
+<section class="panel filters">
+  <form>
+    <label>Sklad
+      <select name="warehouse" onchange="this.form.submit()">
+        {% for wh in warehouses %}
+        <option {{ 'selected' if wh.name == selected_warehouse }}>{{ wh.name }}</option>
+        {% endfor %}
+      </select>
+    </label>
+  </form>
+</section>
+
+{% if role == 'admin' %}
+<div class="grid four forms">
+  <form class="panel stack" method="post" action="{{ url_for('web_add_warehouse') }}">
+    <h3>Sklad qo'shish</h3>
+    <input name="name" placeholder="Sklad nomi">
+    <button>Qo'shish</button>
+  </form>
+  <form class="panel stack" method="post" action="{{ url_for('web_add_branch') }}">
+    <h3>Filial qo'shish</h3>
+    <input type="hidden" name="warehouse" value="{{ selected_warehouse }}">
+    <input name="name" placeholder="Filial nomi">
+    <button>Qo'shish</button>
+  </form>
+  <form class="panel stack" method="post" action="{{ url_for('web_add_type') }}">
+    <h3>Mahsulot turi</h3>
+    <input type="hidden" name="warehouse" value="{{ selected_warehouse }}">
+    <select name="branch">
+      <option value="common">Umumiy</option>
+      {% for b in branches %}<option>{{ b.name }}</option>{% endfor %}
+    </select>
+    <input name="name" placeholder="Tur nomi">
+    <button>Qo'shish</button>
+  </form>
+  <form class="panel stack" method="post" action="{{ url_for('web_add_product') }}">
+    <h3>Mahsulot</h3>
+    <input type="hidden" name="warehouse" value="{{ selected_warehouse }}">
+    <select name="branch">
+      <option value="common">Umumiy</option>
+      {% for b in branches %}<option>{{ b.name }}</option>{% endfor %}
+    </select>
+    <input name="product_type" placeholder="Tur nomi">
+    <input name="name" placeholder="Mahsulot">
+    <input name="code" placeholder="Kod">
+    <input name="unit" placeholder="dona">
+    <button>Qo'shish</button>
+  </form>
+</div>
+{% endif %}
+
+<div class="grid two">
+  <section class="panel">
+    <h2>Filiallar</h2>
+    <div class="chips">
+      <span>🌍 Umumiy</span>
+      {% for b in branches %}<span>🏢 {{ b.name }}</span>{% endfor %}
+    </div>
+  </section>
+  <section class="panel">
+    <h2>Mahsulot turlari</h2>
+    <div class="chips">
+      {% for t in product_types %}<span>📦 {{ t.name }} <small>{{ t.branch }}</small></span>{% endfor %}
+    </div>
+  </section>
+</div>
+
+<section class="panel">
+  <h2>Mahsulot ro'yxati</h2>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Nomi</th><th>Kod</th><th>Birlik</th><th>Tur</th><th>Filial</th></tr></thead>
+      <tbody>
+        {% for p in products %}
+        <tr><td>{{ p.name }}</td><td>{{ p.code }}</td><td>{{ p.unit }}</td><td>{{ p.product_type }}</td><td>{{ p.branch }}</td></tr>
+        {% else %}
+        <tr><td colspan="5">Mahsulot yo'q.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endblock %}

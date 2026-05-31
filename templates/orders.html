@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block content %}
+<header class="top">
+  <div>
+    <h1>Buyurtmalar</h1>
+    <p>Mijoz yuboradi, admin tasdiqlaydi, xodim bajaradi.</p>
+  </div>
+</header>
+
+{% if role in ['customer','admin'] %}
+<form class="panel stack order-form" method="post" action="{{ url_for('web_create_order') }}">
+  <h2>Yangi buyurtma</h2>
+  <input name="title" placeholder="Masalan: 20 dona mahsulot kerak">
+  <textarea name="description" placeholder="Nima kerakligini batafsil yozing"></textarea>
+  <select name="warehouse">
+    <option value="">Sklad tanlang</option>
+    {% for wh in warehouses %}<option>{{ wh.name }}</option>{% endfor %}
+  </select>
+  <input name="branch" placeholder="Filial (ixtiyoriy)">
+  <button>Yuborish</button>
+</form>
+{% endif %}
+
+<section class="panel">
+  <h2>Ro'yxat</h2>
+  {% include '_orders_table.html' %}
+</section>
+{% endblock %}

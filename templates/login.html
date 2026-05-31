@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="login-card">
+  <div class="logo">📦</div>
+  <h1>Sklad CRM login</h1>
+  <p>Telegram bot tasdiqlagan username yoki user_id va bot bergan parol bilan kiring.</p>
+  <form method="post" class="stack">
+    <label>Username yoki user_id<input name="login" placeholder="admin yoki 123456789" required></label>
+    <label>Parol<input type="password" name="password" placeholder="Bot bergan parol" required></label>
+    <button>Kirish</button>
+  </form>
+  <small>MVP admin login: <b>admin</b>, parol Render envdagi <b>WEB_ADMIN_PASSWORD</b> (default: admin123).</small>
+</section>
+{% endblock %}

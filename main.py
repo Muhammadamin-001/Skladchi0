@@ -2,7 +2,7 @@ import telebot
 import logging
 import os
 import time
-from flask import Flask, request
+from flask import Flask, request, redirect
 from config.settings import BOT_TOKEN, ADMIN_ID, MESSAGES
 from database.mongodb import init_db, get_db
 from keyboards.telebot_keyboards import (
@@ -33,6 +33,7 @@ from keyboards.telebot_keyboards import (
 # Line 30 dan keyin qo'shish:
 from groups.handlers import register_group_handlers
 from admin_users.handlers import register_admin_users_handlers
+from web.routes import register_web_routes
 
 logging.basicConfig(
     level=logging.INFO,
@@ -3059,8 +3060,10 @@ except Exception as e:
 
 @app.route('/')
 def index():
-    """Health check"""
-    return "Bot is running", 200
+    """Web panel bosh sahifasiga yo'naltirish."""
+    return redirect("/dashboard")
+
+register_web_routes(app)
 
 # ==================== MAIN ====================
 

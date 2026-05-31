@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block content %}
+<header class="top">
+  <div>
+    <h1>Sklad</h1>
+    <p>Real skladda mavjud mahsulotlar miqdori.</p>
+  </div>
+</header>
+
+<section class="panel filters">
+  <form>
+    <label>Sklad
+      <select name="warehouse" onchange="this.form.submit()">
+        {% for wh in warehouses %}
+        <option {{ 'selected' if wh.name == selected_warehouse }}>{{ wh.name }}</option>
+        {% endfor %}
+      </select>
+    </label>
+  </form>
+</section>
+
+<section class="panel">
+  {% include '_inventory_table.html' %}
+</section>
+{% endblock %}

@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block content %}
+<header class="top">
+  <div>
+    <h1>Boshqarish</h1>
+    <p>Foydalanuvchi roli, web paroli va tasdiqlash.</p>
+  </div>
+</header>
+
+<section class="panel">
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>Foydalanuvchi</th><th>User ID</th><th>Role</th><th>Tasdiq</th><th>Yangi parol</th><th></th></tr>
+      </thead>
+      <tbody>
+        {% for u in users %}
+        <tr>
+          <form method="post" action="{{ url_for('web_update_user', user_id=u.user_id) }}">
+            <td>{{ u.username or u.first_name }}</td>
+            <td>{{ u.user_id }}</td>
+            <td>
+              <select name="role">
+                <option value="customer" {{ 'selected' if (u.role or 'customer') == 'customer' }}>Mijoz</option>
+                <option value="employee" {{ 'selected' if u.role == 'employee' }}>Xodim</option>
+                <option value="admin" {{ 'selected' if u.role == 'admin' }}>Admin</option>
+              </select>
+            </td>
+            <td><input type="checkbox" name="approved" {{ 'checked' if u.approved }}></td>
+            <td><input name="password" placeholder="O'zgartirish uchun yozing"></td>
+            <td><button>Saqlash</button></td>
+          </form>
+        </tr>
+        {% else %}
+        <tr><td colspan="6">Foydalanuvchi yo'q.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endblock %}
