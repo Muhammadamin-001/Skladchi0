@@ -85,8 +85,13 @@ class MongoDBManager:
     def get_user(self, user_id):
         return self.db["users"].find_one({"user_id": user_id})
 
-    def approve_user(self, user_id):
-        self.db["users"].update_one({"user_id": user_id}, {"$set": {"approved": True}})
+    def approve_user(self, user_id, role=None, password_hash=None):
+        update = {"approved": True, "updated_at": datetime.utcnow()}
+        if role is not None:
+            update["role"] = role
+        if password_hash is not None:
+            update["password_hash"] = password_hash
+        self.db["users"].update_one({"user_id": user_id}, {"$set": update})
 
     def reject_user(self, user_id):
         self.db["users"].delete_one({"user_id": user_id})

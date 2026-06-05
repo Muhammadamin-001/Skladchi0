@@ -11,6 +11,9 @@ ADMIN_ID = int(os.getenv("ADMIN_ID", 0))
 MONGO_URI = os.getenv("MONGO_URI")
 DB_NAME = "inventory_bot"
 WAREHOUSE_NAME = "Umumiy sklad"
+# Web app
+WEB_APP_URL = os.getenv("WEB_APP_URL", "").rstrip("/")
+
 # Settings
 ITEMS_PER_PAGE = 5
 
