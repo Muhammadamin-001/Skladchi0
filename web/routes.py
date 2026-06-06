@@ -5,7 +5,7 @@ from flask import flash, redirect, render_template, request, session, url_for
 from werkzeug.security import check_password_hash, generate_password_hash
 
 from config.settings import ADMIN_ID
-from database.mongodb import DatabaseNotInitializedError, get_db
+from database.mongodb import get_db
 
 ADMIN_PASSWORD = os.getenv("WEB_ADMIN_PASSWORD", "admin123")
 
@@ -84,6 +84,16 @@ def _optional_int(value):
         return None
 
 
+def _format_quantity(value):
+    """Miqdorlarni Jinja shablonlarida ixcham ko'rsatish uchun filter."""
+    if value is None:
+        value = 0
+    try:
+        return format(float(value), "g")
+    except (TypeError, ValueError):
+        return value
+
+
 def _status_label(status):
     return {
         "new": "Yangi",
@@ -103,10 +113,7 @@ def _status_label(status):
 def register_web_routes(app):
     app.secret_key = os.getenv("SECRET_KEY", os.getenv("FLASK_SECRET_KEY", "dev-secret-change-me"))
     app.jinja_env.globals["status_label"] = _status_label
-
-    @app.errorhandler(DatabaseNotInitializedError)
-    def web_database_not_ready(error):
-        return render_template("db_error.html", message=str(error)), 503
+    app.jinja_env.filters["qty"] = _format_quantity
     
     @app.get("/")
     def web_home():

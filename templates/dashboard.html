@@ -33,7 +33,7 @@
         <thead><tr><th>Xomashyo</th><th>Qoldiq</th><th>Minimum</th></tr></thead>
         <tbody>
           {% for item in critical %}
-          <tr><td>{{ item.name }}</td><td><b>{{ item.quantity:g }}</b> {{ item.unit }}</td><td>{{ item.min_quantity:g }}</td></tr>
+          <tr><td>{{ item.name }}</td><td><b>{{ item.quantity|qty }}</b> {{ item.unit }}</td><td>{{ item.min_quantity|qty }}</td></tr>
           {% else %}
           <tr><td colspan="3">Kritik qoldiq yo'q.</td></tr>
           {% endfor %}

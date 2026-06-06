@@ -29,7 +29,7 @@
       <thead><tr><th>Mahsulot</th><th>Miqdor</th><th>Summa</th></tr></thead>
       <tbody>
         {% for name, row in report.product_sales.items() %}
-        <tr><td>{{ name }}</td><td>{{ row.quantity:g }}</td><td>{{ "%.0f"|format(row.amount) }}</td></tr>
+        <tr><td>{{ name }}</td><td>{{ row.quantity|qty }}</td><td>{{ "%.0f"|format(row.amount) }}</td></tr>
         {% else %}
         <tr><td colspan="3">Sotuv yo'q.</td></tr>
         {% endfor %}

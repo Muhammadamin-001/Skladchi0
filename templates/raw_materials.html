@@ -46,7 +46,7 @@
         <tr>
           <td data-label="Xomashyo"><b>{{ item.name }}</b><small>{{ item.code or '' }}</small></td>
           <td data-label="Kategoriya">{{ item.category }}</td>
-          <td data-label="Qoldiq"><b>{{ item.quantity:g }}</b> {{ item.unit }}<small>Min: {{ item.min_quantity:g }}</small></td>
+          <td data-label="Qoldiq"><b>{{ item.quantity|qty }}</b> {{ item.unit }}<small>Min: {{ item.min_quantity|qty }}</small></td>
           <td data-label="Narx">{{ "%.0f"|format(item.avg_cost or 0) }}</td>
           <td data-label="Amal">
             {% if role in ['admin','manager','warehouseman'] %}
@@ -75,7 +75,7 @@
       <thead><tr><th>Sana</th><th>Xomashyo</th><th>Tur</th><th>Miqdor</th><th>Izoh</th><th>Kim</th></tr></thead>
       <tbody>
         {% for row in movements %}
-        <tr><td>{{ row.created_at.strftime('%Y-%m-%d %H:%M') if row.created_at else '-' }}</td><td>{{ row.material_name }}</td><td>{{ row.type }}</td><td>{{ row.quantity:g }}</td><td>{{ row.note or '-' }}</td><td>{{ row.actor_name or '-' }}</td></tr>
+        <tr><td>{{ row.created_at.strftime('%Y-%m-%d %H:%M') if row.created_at else '-' }}</td><td>{{ row.material_name }}</td><td>{{ row.type }}</td><td>{{ row.quantity|qty }}</td><td>{{ row.note or '-' }}</td><td>{{ row.actor_name or '-' }}</td></tr>
         {% else %}
         <tr><td colspan="6">Harakatlar yo'q.</td></tr>
         {% endfor %}

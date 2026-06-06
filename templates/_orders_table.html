@@ -10,7 +10,7 @@
           <b>{{ order.title }}</b>
           <small>{{ order.description or '' }}</small>
           {% for item in order.items or [] %}
-          <small>{{ item.product_name }}: {{ item.quantity:g }} dona</small>
+          <small>{{ item.product_name }}: {{ item.quantity|qty }} dona</small>
           {% endfor %}
         </td>
         <td data-label="Mijoz">{{ order.customer_name }}<small>{{ order.customer_phone or order.source or '' }}</small></td>

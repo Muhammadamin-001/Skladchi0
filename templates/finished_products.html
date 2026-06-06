@@ -49,7 +49,7 @@
           {% for item in product.bom %}
           <tr>
             <td>{{ item.material_name }}</td>
-            <td>{{ item.quantity:g }} {{ item.unit }}</td>
+            <td>{{ item.quantity|qty }} {{ item.unit }}</td>
             <td>
               {% if role in ['admin','manager'] %}
               <form method="post" action="{{ url_for('web_delete_bom_item', item_id=item._id) }}"><button class="ghost">O'chirish</button></form>
