@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block content %}
+<header class="top">
+  <div>
+    <h1>Xodimlar</h1>
+    <p>Xodim kartasi va kunlik davomad.</p>
+  </div>
+</header>
+
+<form class="panel stack" method="post" action="{{ url_for('web_add_employee') }}">
+  <h2>Yangi xodim</h2>
+  <div class="grid four">
+    <input name="first_name" placeholder="Ism" required>
+    <input name="last_name" placeholder="Familiya">
+    <input name="phone" placeholder="Telefon">
+    <input name="user_id" placeholder="Telegram user_id">
+  </div>
+  <div class="grid three">
+    <input name="position" placeholder="Lavozim">
+    <select name="salary_type"><option value="monthly">Oylik</option><option value="piecework">Ishbay</option></select>
+    <label class="check"><input type="checkbox" name="can_mark_attendance"> Davomad belgilay oladi</label>
+  </div>
+  <button>Saqlash</button>
+</form>
+
+<section class="panel filters">
+  <form class="inline"><input type="date" name="date" value="{{ selected_date }}"><button class="ghost">Sana</button></form>
+</section>
+
+<section class="panel">
+  <h2>Davomad va ro'yxat</h2>
+  <div class="table-wrap responsive-table">
+    <table>
+      <thead><tr><th>Xodim</th><th>Lavozim</th><th>Bugungi holat</th><th>Belgilash</th></tr></thead>
+      <tbody>
+        {% for e in employees %}
+        <tr>
+          <td data-label="Xodim"><b>{{ e.first_name }} {{ e.last_name or '' }}</b><small>{{ e.phone or '' }}</small></td>
+          <td data-label="Lavozim">{{ e.position or '-' }}<small>{{ e.salary_type }}</small></td>
+          <td data-label="Holat">{% if e.attendance %}<span class="badge ready">{{ e.attendance.status }}</span>{% else %}<span class="badge">Belgilanmagan</span>{% endif %}</td>
+          <td data-label="Belgilash">
+            <form method="post" action="{{ url_for('web_mark_attendance', employee_id=e._id) }}" class="inline compact">
+              <input type="hidden" name="date" value="{{ selected_date }}">
+              <select name="status">{% for status in attendance_statuses %}<option>{{ status }}</option>{% endfor %}</select>
+              <input name="note" placeholder="Izoh">
+              <button>Saqlash</button>
+            </form>
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="4">Xodim yo'q.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endblock %}

@@ -3,26 +3,43 @@
 <header class="top">
   <div>
     <h1>Asosiy</h1>
-    <p>CRM va sklad jarayonlari umumiy ko'rinishi.</p>
+    <p>Tikuvchilik korxonasi uchun buyurtma, sklad va moliya ko'rinishi.</p>
   </div>
 </header>
 
 <div class="cards">
   <div class="card"><b>{{ stats.total }}</b><span>Jami buyurtma</span></div>
   <div class="card"><b>{{ stats.new }}</b><span>Yangi</span></div>
-  <div class="card"><b>{{ stats.approved }}</b><span>Tasdiqlangan</span></div>
-  <div class="card"><b>{{ stats.in_progress }}</b><span>Jarayonda</span></div>
+  <div class="card"><b>{{ stats.in_progress }}</b><span>Ishlab chiqarishda</span></div>
+  <div class="card"><b>{{ "%.0f"|format(report.profit) }}</b><span>Taxminiy foyda</span></div>
 </div>
 
 <div class="grid two">
   <section class="panel">
-    <h2>Oxirgi buyurtmalar</h2>
+    <div class="section-head">
+      <h2>Oxirgi buyurtmalar</h2>
+      <a class="link" href="{{ url_for('web_orders') }}">Barchasi</a>
+    </div>
     {% include '_orders_table.html' %}
   </section>
-  {% if role in ['admin','employee'] %}
+  {% if role in ['admin','manager','warehouseman','employee'] %}
   <section class="panel">
-    <h2>Sklad qoldiqlari</h2>
-    {% include '_inventory_table.html' %}
+    <div class="section-head">
+      <h2>Kritik qoldiqlar</h2>
+      <a class="link" href="{{ url_for('web_raw_materials') }}">Sklad</a>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Xomashyo</th><th>Qoldiq</th><th>Minimum</th></tr></thead>
+        <tbody>
+          {% for item in critical %}
+          <tr><td>{{ item.name }}</td><td><b>{{ item.quantity:g }}</b> {{ item.unit }}</td><td>{{ item.min_quantity:g }}</td></tr>
+          {% else %}
+          <tr><td colspan="3">Kritik qoldiq yo'q.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
   </section>
   {% endif %}
 </div>

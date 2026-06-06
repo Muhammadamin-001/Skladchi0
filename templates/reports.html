@@ -3,23 +3,38 @@
 <header class="top">
   <div>
     <h1>Hisobot</h1>
-    <p>Kunlik, oylik va umumiy hisobotlar uchun MVP poydevor.</p>
+    <p>Davr bo'yicha sotuv, xarajat va foyda.</p>
   </div>
 </header>
 
+<section class="panel filters">
+  <form class="inline">
+    <input type="date" name="from" value="{{ date_from }}">
+    <input type="date" name="to" value="{{ date_to }}">
+    <button class="ghost">Filter</button>
+  </form>
+</section>
+
 <div class="cards">
-  <div class="card"><b>{{ stats.total }}</b><span>Umumiy</span></div>
-  <div class="card"><b>{{ stats.done }}</b><span>Tugagan</span></div>
-  <div class="card"><b>{{ stats.rejected }}</b><span>Rad etilgan</span></div>
-  <div class="card"><b>{{ stats.in_progress }}</b><span>Jarayonda</span></div>
+  <div class="card"><b>{{ report.orders_count }}</b><span>Buyurtma</span></div>
+  <div class="card"><b>{{ "%.0f"|format(report.revenue) }}</b><span>Daromad</span></div>
+  <div class="card"><b>{{ "%.0f"|format(report.expenses) }}</b><span>Xarajat</span></div>
+  <div class="card"><b>{{ "%.0f"|format(report.profit) }}</b><span>Foyda</span></div>
 </div>
 
 <section class="panel">
-  <h2>Keyingi rivojlantirish</h2>
-  <ul>
-    <li>Kunlik va oylik sanaga ko'ra filter.</li>
-    <li>Excel/PDF eksport.</li>
-    <li>Mahsulot kirim-chiqim audit jurnali.</li>
-  </ul>
+  <h2>Mahsulotlar bo'yicha sotuv</h2>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Mahsulot</th><th>Miqdor</th><th>Summa</th></tr></thead>
+      <tbody>
+        {% for name, row in report.product_sales.items() %}
+        <tr><td>{{ name }}</td><td>{{ row.quantity:g }}</td><td>{{ "%.0f"|format(row.amount) }}</td></tr>
+        {% else %}
+        <tr><td colspan="3">Sotuv yo'q.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
 </section>
 {% endblock %}

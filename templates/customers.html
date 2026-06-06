@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% block content %}
+<header class="top">
+  <div>
+    <h1>Xaridorlar</h1>
+    <p>Telefon, Telegram va ijtimoiy tarmoqlar bilan mijoz kartasi.</p>
+  </div>
+</header>
+
+<form class="panel stack" method="post" action="{{ url_for('web_add_customer') }}">
+  <h2>Yangi xaridor</h2>
+  <div class="grid four">
+    <input name="name" placeholder="Ism yoki korxona" required>
+    <input name="phone" placeholder="Telefon">
+    <input name="telegram" placeholder="Telegram">
+    <input name="instagram" placeholder="Instagram">
+  </div>
+  <div class="grid four">
+    <input name="facebook" placeholder="Facebook">
+    <input name="tiktok" placeholder="TikTok">
+    <input name="whatsapp" placeholder="WhatsApp">
+    <input name="source" placeholder="Manba">
+  </div>
+  <textarea name="address" placeholder="Manzil yoki izoh"></textarea>
+  <button>Saqlash</button>
+</form>
+
+<section class="panel filters">
+  <form class="inline"><input name="q" value="{{ q }}" placeholder="Qidiruv"><button class="ghost">Qidirish</button></form>
+</section>
+
+<section class="panel">
+  <h2>Ro'yxat</h2>
+  <div class="table-wrap responsive-table">
+    <table>
+      <thead><tr><th>Xaridor</th><th>Telefon</th><th>Ijtimoiy tarmoqlar</th><th>Manba</th></tr></thead>
+      <tbody>
+        {% for c in customers %}
+        <tr>
+          <td data-label="Xaridor"><b>{{ c.name }}</b><small>{{ c.address or '' }}</small></td>
+          <td data-label="Telefon">{{ c.phone or '-' }}</td>
+          <td data-label="Ijtimoiy">{{ c.telegram or '' }} {{ c.instagram or '' }} {{ c.whatsapp or '' }}</td>
+          <td data-label="Manba">{{ c.source or '-' }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="4">Xaridor yo'q.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endblock %}

@@ -26,7 +26,28 @@ class MongoDBManager:
 
     def _create_collections(self):
         """Kerakli kolleksiyalar va indekslarni tayyorlash."""
-        collections = ["users", "warehouses", "branches", "product_types", "products", "inventory", "requests", "units", "groups", "orders"]
+        collections = [
+            "users",
+            "warehouses",
+            "branches",
+            "product_types",
+            "products",
+            "inventory",
+            "requests",
+            "units",
+            "groups",
+            "orders",
+            "employees",
+            "customers",
+            "raw_materials",
+            "finished_products",
+            "product_boms",
+            "stock_balances",
+            "stock_movements",
+            "expenses",
+            "payments",
+            "attendance",
+        ]
         for name in collections:
             if name not in self.db.list_collection_names():
                 self.db.create_collection(name)
@@ -36,6 +57,19 @@ class MongoDBManager:
         self.db["requests"].create_index("user_id", unique=True)
         self.db["orders"].create_index([("status", 1), ("created_at", -1)])
         self.db["orders"].create_index([("customer_id", 1), ("created_at", -1)])
+        self.db["employees"].create_index("user_id", unique=True, sparse=True)
+        self.db["customers"].create_index("user_id", unique=True, sparse=True)
+        self.db["customers"].create_index([("phone", 1)], sparse=True)
+        self.db["raw_materials"].create_index([("name", 1), ("warehouse", 1), ("branch", 1), ("category", 1)], unique=True)
+        self.db["raw_materials"].create_index("legacy_product_id", unique=True, sparse=True)
+        self.db["finished_products"].create_index([("article", 1)], unique=True, sparse=True)
+        self.db["finished_products"].create_index([("name", 1), ("color", 1), ("size", 1)], unique=True)
+        self.db["product_boms"].create_index([("product_id", 1), ("material_id", 1)], unique=True)
+        self.db["stock_balances"].create_index([("material_id", 1), ("warehouse", 1)], unique=True)
+        self.db["stock_movements"].create_index([("material_id", 1), ("created_at", -1)])
+        self.db["expenses"].create_index([("date", -1), ("category", 1)])
+        self.db["payments"].create_index([("order_id", 1), ("created_at", -1)])
+        self.db["attendance"].create_index([("employee_id", 1), ("date", 1)], unique=True)
         # Warehouse/branch/type/product unique constraints per kontekst
         # Legacy tizimlarda branches uchun faqat `name` unique index qolib ketgan bo'lishi mumkin.
         # Bu holatda turli skladlarda bir xil filial nomi qo'shib bo'lmaydi, shuning uchun tozalaymiz.
@@ -63,6 +97,55 @@ class MongoDBManager:
             [("product_name", 1), ("warehouse", 1), ("branch", 1), ("product_type", 1)],
             unique=True,
         )
+        self._migrate_legacy_products_to_raw_materials()
+
+    def _migrate_legacy_products_to_raw_materials(self):
+        """Eski products/inventory yozuvlarini yangi xomashyo modeliga ko'chiradi."""
+        for product in self.db["products"].find({}):
+            legacy_id = str(product["_id"])
+            material = {
+                "legacy_product_id": legacy_id,
+                "name": product.get("name"),
+                "code": product.get("code"),
+                "category": product.get("product_type") or "Umumiy",
+                "unit": product.get("unit") or "dona",
+                "warehouse": product.get("warehouse"),
+                "branch": product.get("branch") or "common",
+                "avg_cost": float(product.get("avg_cost") or 0),
+                "min_quantity": float(product.get("min_quantity") or 0),
+                "active": True,
+                "created_at": product.get("created_at") or datetime.utcnow(),
+                "updated_at": datetime.utcnow(),
+            }
+            self.db["raw_materials"].update_one(
+                {"legacy_product_id": legacy_id},
+                {"$setOnInsert": material},
+                upsert=True,
+            )
+
+        for item in self.db["inventory"].find({}):
+            material = self.db["raw_materials"].find_one(
+                {
+                    "name": item.get("product_name"),
+                    "warehouse": item.get("warehouse"),
+                    "branch": item.get("branch") or "common",
+                    "category": item.get("product_type") or "Umumiy",
+                }
+            )
+            if not material:
+                continue
+            self.db["stock_balances"].update_one(
+                {"material_id": str(material["_id"]), "warehouse": item.get("warehouse")},
+                {
+                    "$setOnInsert": {
+                        "material_id": str(material["_id"]),
+                        "warehouse": item.get("warehouse"),
+                        "quantity": float(item.get("quantity") or 0),
+                        "updated_at": datetime.utcnow(),
+                    }
+                },
+                upsert=True,
+            )
 
 
     # ==================== USERS ====================
@@ -84,6 +167,16 @@ class MongoDBManager:
 
     def get_user(self, user_id):
         return self.db["users"].find_one({"user_id": user_id})
+
+    def update_user_contact(self, user_id, phone=None, first_name=None, last_name=None):
+        update = {"updated_at": datetime.utcnow()}
+        if phone is not None:
+            update["phone"] = phone
+        if first_name is not None:
+            update["first_name"] = first_name
+        if last_name is not None:
+            update["last_name"] = last_name
+        self.db["users"].update_one({"user_id": user_id}, {"$set": update}, upsert=False)
 
     def approve_user(self, user_id, role=None, password_hash=None):
         update = {"approved": True, "updated_at": datetime.utcnow()}
@@ -542,17 +635,412 @@ class MongoDBManager:
     def delete_group(self, warehouse, group_id):
         self.db["groups"].delete_one({"warehouse": warehouse, "group_id": group_id})
 
+# ==================== CRM: CUSTOMERS / EMPLOYEES ====================
+
+    def upsert_customer(self, name, phone=None, user_id=None, telegram=None, instagram=None, facebook=None, tiktok=None, whatsapp=None, source=None, address=None):
+        query = {"user_id": user_id} if user_id else {"phone": phone, "name": name}
+        doc = {
+            "name": name,
+            "phone": phone,
+            "user_id": user_id,
+            "telegram": telegram,
+            "instagram": instagram,
+            "facebook": facebook,
+            "tiktok": tiktok,
+            "whatsapp": whatsapp,
+            "source": source or "manual",
+            "address": address,
+            "active": True,
+            "updated_at": datetime.utcnow(),
+        }
+        result = self.db["customers"].update_one(
+            query,
+            {"$set": doc, "$setOnInsert": {"created_at": datetime.utcnow()}},
+            upsert=True,
+        )
+        return str(result.upserted_id) if result.upserted_id else None
+
+    def get_customers(self, search=None, limit=200):
+        query = {}
+        if search:
+            query["$or"] = [
+                {"name": {"$regex": search, "$options": "i"}},
+                {"phone": {"$regex": search, "$options": "i"}},
+                {"telegram": {"$regex": search, "$options": "i"}},
+                {"instagram": {"$regex": search, "$options": "i"}},
+            ]
+        return list(self.db["customers"].find(query).sort("created_at", -1).limit(limit))
+
+    def get_customer(self, customer_id):
+        try:
+            return self.db["customers"].find_one({"_id": ObjectId(customer_id)})
+        except Exception:
+            return None
+
+    def upsert_employee(self, first_name, last_name=None, phone=None, user_id=None, position=None, salary_type="monthly", can_mark_attendance=False):
+        query = {"user_id": user_id} if user_id else {"phone": phone, "first_name": first_name}
+        doc = {
+            "first_name": first_name,
+            "last_name": last_name,
+            "phone": phone,
+            "user_id": user_id,
+            "position": position,
+            "salary_type": salary_type or "monthly",
+            "can_mark_attendance": bool(can_mark_attendance),
+            "active": True,
+            "updated_at": datetime.utcnow(),
+        }
+        result = self.db["employees"].update_one(
+            query,
+            {"$set": doc, "$setOnInsert": {"created_at": datetime.utcnow()}},
+            upsert=True,
+        )
+        return str(result.upserted_id) if result.upserted_id else None
+
+    def get_employees(self, active=None):
+        query = {}
+        if active is not None:
+            query["active"] = active
+        return list(self.db["employees"].find(query).sort([("active", -1), ("first_name", 1)]))
+
+    def mark_attendance(self, employee_id, date_text, status, actor_id=None, note=None):
+        doc = {
+            "employee_id": employee_id,
+            "date": date_text,
+            "status": status,
+            "actor_id": actor_id,
+            "note": note,
+            "updated_at": datetime.utcnow(),
+        }
+        self.db["attendance"].update_one(
+            {"employee_id": employee_id, "date": date_text},
+            {"$set": doc, "$setOnInsert": {"created_at": datetime.utcnow()}},
+            upsert=True,
+        )
+        return True
+
+    def get_attendance(self, date_from=None, date_to=None):
+        query = {}
+        if date_from or date_to:
+            query["date"] = {}
+            if date_from:
+                query["date"]["$gte"] = date_from
+            if date_to:
+                query["date"]["$lte"] = date_to
+        return list(self.db["attendance"].find(query).sort("date", -1))
+
+# ==================== CRM: RAW MATERIALS / STOCK ====================
+
+    def add_raw_material(self, name, category, unit, warehouse=None, code=None, avg_cost=0, min_quantity=0, quantity=0, actor_name=None):
+        try:
+            doc = {
+                "name": name,
+                "code": code,
+                "category": category or "Umumiy",
+                "unit": unit or "dona",
+                "warehouse": warehouse,
+                "branch": "common",
+                "avg_cost": float(avg_cost or 0),
+                "min_quantity": float(min_quantity or 0),
+                "active": True,
+                "created_at": datetime.utcnow(),
+                "updated_at": datetime.utcnow(),
+            }
+            result = self.db["raw_materials"].insert_one(doc)
+            material_id = str(result.inserted_id)
+            self.db["stock_balances"].update_one(
+                {"material_id": material_id, "warehouse": warehouse},
+                {"$set": {"material_id": material_id, "warehouse": warehouse, "quantity": float(quantity or 0), "updated_at": datetime.utcnow()}},
+                upsert=True,
+            )
+            if float(quantity or 0):
+                self._add_stock_movement(material_id, warehouse, "in", float(quantity or 0), actor_name, "Boshlang'ich qoldiq")
+            return material_id
+        except DuplicateKeyError:
+            return None
+
+    def get_raw_materials(self, warehouse=None, search=None, active=None, limit=300):
+        query = {}
+        if warehouse:
+            query["warehouse"] = warehouse
+        if active is not None:
+            query["active"] = active
+        if search:
+            query["$or"] = [
+                {"name": {"$regex": search, "$options": "i"}},
+                {"code": {"$regex": search, "$options": "i"}},
+                {"category": {"$regex": search, "$options": "i"}},
+            ]
+        materials = list(self.db["raw_materials"].find(query).sort([("category", 1), ("name", 1)]).limit(limit))
+        for material in materials:
+            material["quantity"] = self.get_stock_quantity(str(material["_id"]), material.get("warehouse"))
+        return materials
+
+    def get_raw_material(self, material_id):
+        try:
+            material = self.db["raw_materials"].find_one({"_id": ObjectId(material_id)})
+            if material:
+                material["quantity"] = self.get_stock_quantity(str(material["_id"]), material.get("warehouse"))
+            return material
+        except Exception:
+            return None
+
+    def get_stock_quantity(self, material_id, warehouse=None):
+        balance = self.db["stock_balances"].find_one({"material_id": str(material_id), "warehouse": warehouse})
+        return float(balance.get("quantity", 0)) if balance else 0.0
+
+    def _add_stock_movement(self, material_id, warehouse, movement_type, quantity, actor_name=None, note=None, order_id=None):
+        material = self.get_raw_material(material_id)
+        self.db["stock_movements"].insert_one(
+            {
+                "material_id": str(material_id),
+                "material_name": material.get("name") if material else None,
+                "warehouse": warehouse,
+                "type": movement_type,
+                "quantity": float(quantity),
+                "actor_name": actor_name,
+                "note": note,
+                "order_id": order_id,
+                "created_at": datetime.utcnow(),
+            }
+        )
+
+    def adjust_raw_material_stock(self, material_id, warehouse, movement_type, quantity, actor_name=None, note=None, order_id=None):
+        material_id = str(material_id)
+        qty = float(quantity or 0)
+        if qty <= 0:
+            return None
+        current = self.get_stock_quantity(material_id, warehouse)
+        if movement_type == "out":
+            if qty > current:
+                return None
+            new_qty = current - qty
+        elif movement_type == "adjust":
+            new_qty = qty
+        else:
+            movement_type = "in"
+            new_qty = current + qty
+        self.db["stock_balances"].update_one(
+            {"material_id": material_id, "warehouse": warehouse},
+            {"$set": {"material_id": material_id, "warehouse": warehouse, "quantity": new_qty, "updated_at": datetime.utcnow()}},
+            upsert=True,
+        )
+        movement_qty = qty if movement_type != "adjust" else new_qty - current
+        self._add_stock_movement(material_id, warehouse, movement_type, movement_qty, actor_name, note, order_id)
+        return new_qty
+
+    def get_stock_movements(self, material_id=None, limit=100):
+        query = {"material_id": str(material_id)} if material_id else {}
+        return list(self.db["stock_movements"].find(query).sort("created_at", -1).limit(limit))
+
+# ==================== CRM: FINISHED PRODUCTS / BOM ====================
+
+    def add_finished_product(self, name, article=None, color=None, size=None, sale_price=0, active=True):
+        try:
+            doc = {
+                "name": name,
+                "color": color,
+                "size": size,
+                "sale_price": float(sale_price or 0),
+                "active": bool(active),
+                "created_at": datetime.utcnow(),
+                "updated_at": datetime.utcnow(),
+            }
+            if article:
+                doc["article"] = article
+            result = self.db["finished_products"].insert_one(
+                doc
+            )
+            return str(result.inserted_id)
+        except DuplicateKeyError:
+            return None
+
+    def get_finished_products(self, active=None, search=None):
+        query = {}
+        if active is not None:
+            query["active"] = active
+        if search:
+            query["$or"] = [
+                {"name": {"$regex": search, "$options": "i"}},
+                {"article": {"$regex": search, "$options": "i"}},
+                {"color": {"$regex": search, "$options": "i"}},
+                {"size": {"$regex": search, "$options": "i"}},
+            ]
+        products = list(self.db["finished_products"].find(query).sort("name", 1))
+        for product in products:
+            product["bom"] = self.get_product_bom(str(product["_id"]))
+            product["cost"] = self.calculate_product_cost(str(product["_id"]))
+        return products
+
+    def get_finished_product(self, product_id):
+        try:
+            product = self.db["finished_products"].find_one({"_id": ObjectId(product_id)})
+            if product:
+                product["bom"] = self.get_product_bom(product_id)
+                product["cost"] = self.calculate_product_cost(product_id)
+            return product
+        except Exception:
+            return None
+
+    def set_product_bom_item(self, product_id, material_id, quantity):
+        material = self.get_raw_material(material_id)
+        product = self.get_finished_product(product_id)
+        if not material or not product:
+            return False
+        self.db["product_boms"].update_one(
+            {"product_id": str(product_id), "material_id": str(material_id)},
+            {
+                "$set": {
+                    "product_id": str(product_id),
+                    "product_name": product.get("name"),
+                    "material_id": str(material_id),
+                    "material_name": material.get("name"),
+                    "unit": material.get("unit"),
+                    "quantity": float(quantity or 0),
+                    "updated_at": datetime.utcnow(),
+                },
+                "$setOnInsert": {"created_at": datetime.utcnow()},
+            },
+            upsert=True,
+        )
+        return True
+
+    def delete_product_bom_item(self, item_id):
+        try:
+            self.db["product_boms"].delete_one({"_id": ObjectId(item_id)})
+            return True
+        except Exception:
+            return False
+
+    def get_product_bom(self, product_id):
+        return list(self.db["product_boms"].find({"product_id": str(product_id)}).sort("material_name", 1))
+
+    def calculate_product_cost(self, product_id):
+        total = 0.0
+        for item in self.get_product_bom(product_id):
+            material = self.get_raw_material(item["material_id"])
+            total += float(item.get("quantity") or 0) * float((material or {}).get("avg_cost") or 0)
+        return total
+
+    def calculate_order_materials(self, items):
+        required = {}
+        for item in items:
+            product_id = str(item.get("product_id"))
+            order_qty = float(item.get("quantity") or 0)
+            for bom_item in self.get_product_bom(product_id):
+                material_id = bom_item["material_id"]
+                required.setdefault(
+                    material_id,
+                    {
+                        "material_id": material_id,
+                        "material_name": bom_item.get("material_name"),
+                        "unit": bom_item.get("unit"),
+                        "quantity": 0.0,
+                    },
+                )
+                required[material_id]["quantity"] += float(bom_item.get("quantity") or 0) * order_qty
+        return list(required.values())
+
+    def check_material_availability(self, items, warehouse=None):
+        rows = []
+        ok = True
+        for req in self.calculate_order_materials(items):
+            have = self.get_stock_quantity(req["material_id"], warehouse)
+            enough = have >= req["quantity"]
+            ok = ok and enough
+            rows.append({**req, "available": have, "enough": enough})
+        return ok, rows
+
+# ==================== CRM: EXPENSES / PAYMENTS / REPORTS ====================
+
+    def add_expense(self, category, amount, date_text, description=None, actor_name=None):
+        result = self.db["expenses"].insert_one(
+            {
+                "category": category,
+                "amount": float(amount or 0),
+                "date": date_text,
+                "description": description,
+                "actor_name": actor_name,
+                "created_at": datetime.utcnow(),
+            }
+        )
+        return str(result.inserted_id)
+
+    def get_expenses(self, date_from=None, date_to=None):
+        query = {}
+        if date_from or date_to:
+            query["date"] = {}
+            if date_from:
+                query["date"]["$gte"] = date_from
+            if date_to:
+                query["date"]["$lte"] = date_to
+        return list(self.db["expenses"].find(query).sort("date", -1))
+
+    def add_payment(self, order_id, amount, method, note=None, actor_name=None):
+        result = self.db["payments"].insert_one(
+            {
+                "order_id": str(order_id),
+                "amount": float(amount or 0),
+                "method": method,
+                "note": note,
+                "actor_name": actor_name,
+                "created_at": datetime.utcnow(),
+            }
+        )
+        return str(result.inserted_id)
+
+    def get_payments(self, order_id=None):
+        query = {"order_id": str(order_id)} if order_id else {}
+        return list(self.db["payments"].find(query).sort("created_at", -1))
+
+    def get_crm_report(self, date_from=None, date_to=None):
+        order_query = {}
+        if date_from or date_to:
+            order_query["date"] = {}
+            if date_from:
+                order_query["date"]["$gte"] = date_from
+            if date_to:
+                order_query["date"]["$lte"] = date_to
+        orders = list(self.db["orders"].find(order_query))
+        expenses = self.get_expenses(date_from, date_to)
+        revenue = sum(float(order.get("total_amount") or 0) for order in orders if order.get("status") != "cancelled")
+        expense_total = sum(float(exp.get("amount") or 0) for exp in expenses)
+        product_sales = {}
+        for order in orders:
+            for item in order.get("items", []):
+                key = item.get("product_name") or "Noma'lum"
+                product_sales.setdefault(key, {"quantity": 0.0, "amount": 0.0})
+                product_sales[key]["quantity"] += float(item.get("quantity") or 0)
+                product_sales[key]["amount"] += float(item.get("total") or 0)
+        return {
+            "orders_count": len(orders),
+            "revenue": revenue,
+            "expenses": expense_total,
+            "profit": revenue - expense_total,
+            "product_sales": product_sales,
+        }
+
 # ==================== WEB ORDERS / CRM ====================
 
-    def create_order(self, customer_id, customer_name, title, description, warehouse=None, branch=None):
+    def create_order(self, customer_id, customer_name, title, description, warehouse=None, branch=None, items=None, source="web", phone=None):
+        items = items or []
+        total_amount = sum(float(item.get("total") or 0) for item in items)
+        materials_ok, materials = self.check_material_availability(items, warehouse) if items else (True, [])
         doc = {
             "customer_id": customer_id,
             "customer_name": customer_name,
+            "customer_phone": phone,
             "title": title,
             "description": description,
             "warehouse": warehouse,
             "branch": branch,
             "status": "new",
+            "source": source,
+            "items": items,
+            "materials": materials,
+            "materials_ok": materials_ok,
+            "total_amount": total_amount,
+            "date": datetime.utcnow().strftime("%Y-%m-%d"),
             "assigned_to": None,
             "events": [
                 {"status": "new", "text": "Buyurtma mijoz tomonidan yuborildi", "at": datetime.utcnow()}
@@ -570,7 +1058,7 @@ class MongoDBManager:
         if customer_id:
             query["customer_id"] = customer_id
         if employee_view:
-            query["status"] = {"$in": ["approved", "in_progress"]}
+            query["status"] = {"$in": ["confirmed", "materials_checked", "in_production", "ready", "approved", "in_progress"]}
         return list(self.db["orders"].find(query).sort("created_at", -1).limit(limit))
 
     def get_order(self, order_id):
@@ -579,8 +1067,56 @@ class MongoDBManager:
         except Exception:
             return None
 
+    def refresh_order_materials(self, order_id):
+        order = self.get_order(order_id)
+        if not order:
+            return None
+        materials_ok, materials = self.check_material_availability(order.get("items", []), order.get("warehouse"))
+        self.db["orders"].update_one(
+            {"_id": ObjectId(order_id)},
+            {"$set": {"materials": materials, "materials_ok": materials_ok, "updated_at": datetime.utcnow()}},
+        )
+        return materials_ok, materials
+
+    def consume_order_materials(self, order_id, actor_name=None):
+        order = self.get_order(order_id)
+        if not order:
+            return False, "Buyurtma topilmadi"
+        materials_ok, materials = self.check_material_availability(order.get("items", []), order.get("warehouse"))
+        if not materials_ok:
+            self.db["orders"].update_one(
+                {"_id": ObjectId(order_id)},
+                {"$set": {"materials": materials, "materials_ok": False, "updated_at": datetime.utcnow()}},
+            )
+            return False, "Xomashyo yetarli emas"
+        for material in materials:
+            new_qty = self.adjust_raw_material_stock(
+                material["material_id"],
+                order.get("warehouse"),
+                "out",
+                material["quantity"],
+                actor_name,
+                f"Buyurtma uchun chiqim: {order.get('title')}",
+                str(order["_id"]),
+            )
+            if new_qty is None:
+                return False, "Xomashyo chiqimida xatolik"
+        self.db["orders"].update_one(
+            {"_id": ObjectId(order_id)},
+            {"$set": {"materials": materials, "materials_ok": True, "materials_consumed": True, "updated_at": datetime.utcnow()}},
+        )
+        return True, "Xomashyo chiqim qilindi"
+
     def update_order_status(self, order_id, status, actor_name, note=None, assigned_to=None):
         event_text = note or status
+        if status == "materials_checked":
+            self.refresh_order_materials(order_id)
+        if status == "in_production":
+            order = self.get_order(order_id)
+            if order and order.get("items") and not order.get("materials_consumed"):
+                ok, message = self.consume_order_materials(order_id, actor_name)
+                if not ok:
+                    return False
         update = {
             "$set": {"status": status, "updated_at": datetime.utcnow()},
             "$push": {"events": {"status": status, "text": event_text, "actor": actor_name, "at": datetime.utcnow()}},
@@ -594,8 +1130,12 @@ class MongoDBManager:
             return False
 
     def get_order_stats(self):
-        statuses = ["new", "approved", "in_progress", "done", "rejected"]
+        statuses = ["new", "confirmed", "materials_checked", "in_production", "ready", "delivered", "cancelled", "approved", "done", "rejected"]
         stats = {key: self.db["orders"].count_documents({"status": key}) for key in statuses}
+        stats["approved"] = stats.get("approved", 0) + stats.get("confirmed", 0)
+        stats["in_progress"] = stats.get("in_progress", 0) + stats.get("in_production", 0)
+        stats["done"] = stats.get("done", 0) + stats.get("delivered", 0) + stats.get("ready", 0)
+        stats["rejected"] = stats.get("rejected", 0) + stats.get("cancelled", 0)
         stats["total"] = self.db["orders"].count_documents({})
         return stats
 

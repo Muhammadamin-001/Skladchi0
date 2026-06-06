@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block content %}
+<header class="top">
+  <div>
+    <h1>Xarajatlar</h1>
+    <p>Xomashyo xaridi, oylik, ijara, transport va boshqa xarajatlar.</p>
+  </div>
+</header>
+
+<form class="panel stack" method="post" action="{{ url_for('web_add_expense') }}">
+  <h2>Yangi xarajat</h2>
+  <div class="grid four">
+    <input type="date" name="date">
+    <input name="category" placeholder="Kategoriya" required>
+    <input name="amount" type="number" step="100" placeholder="Summa" required>
+    <input name="description" placeholder="Izoh">
+  </div>
+  <button>Saqlash</button>
+</form>
+
+<section class="panel filters">
+  <form class="inline">
+    <input type="date" name="from" value="{{ date_from }}">
+    <input type="date" name="to" value="{{ date_to }}">
+    <button class="ghost">Filter</button>
+  </form>
+</section>
+
+<section class="panel">
+  <h2>Ro'yxat</h2>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Sana</th><th>Kategoriya</th><th>Summa</th><th>Izoh</th><th>Kim</th></tr></thead>
+      <tbody>
+        {% for e in expenses %}
+        <tr><td>{{ e.date }}</td><td>{{ e.category }}</td><td><b>{{ "%.0f"|format(e.amount or 0) }}</b></td><td>{{ e.description or '-' }}</td><td>{{ e.actor_name or '-' }}</td></tr>
+        {% else %}
+        <tr><td colspan="5">Xarajat yo'q.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endblock %}

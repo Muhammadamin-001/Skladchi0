@@ -9,6 +9,11 @@ from database.mongodb import get_db
 
 ADMIN_PASSWORD = os.getenv("WEB_ADMIN_PASSWORD", "admin123")
 
+CRM_ROLES = {"admin", "manager", "warehouseman", "employee", "customer"}
+ORDER_STATUSES = ["new", "confirmed", "materials_checked", "in_production", "ready", "delivered", "cancelled"]
+PAYMENT_METHODS = ["naqd", "karta/terminal", "bank o'tkazma", "qarz"]
+ATTENDANCE_STATUSES = ["keldi", "kelmadi", "kechikdi", "sababli yo'q"]
+
 
 def _display_name(user):
     if not user:
@@ -16,14 +21,15 @@ def _display_name(user):
     username = user.get("username")
     if username and username != "NoUsername":
         return f"@{username}"
-    return user.get("first_name") or str(user.get("user_id"))
+    full_name = " ".join(part for part in [user.get("first_name"), user.get("last_name")] if part)
+    return full_name or str(user.get("user_id"))
 
 
 def _current_user():
     user_id = session.get("user_id")
     if not user_id:
         return None
-    if session.get("role") == "admin" and user_id == ADMIN_ID:
+    if session.get("role") == "admin" and int(user_id) == ADMIN_ID:
         return {"user_id": ADMIN_ID, "username": "admin", "first_name": "Admin", "role": "admin", "approved": True}
     return get_db().get_user(int(user_id))
 
@@ -51,7 +57,7 @@ def _base_context(user=None):
     db = get_db()
     user = user or _current_user()
     warehouses = db.get_all_warehouses()
-    selected_warehouse = request.args.get("warehouse") or (warehouses[0]["name"] if warehouses else None)
+    selected_warehouse = request.values.get("warehouse") or (warehouses[0]["name"] if warehouses else None)
     return {
         "user": user,
         "role": _role(user),
@@ -59,11 +65,48 @@ def _base_context(user=None):
         "warehouses": warehouses,
         "selected_warehouse": selected_warehouse,
         "year": datetime.utcnow().year,
+        "order_statuses": ORDER_STATUSES,
+        "payment_methods": PAYMENT_METHODS,
     }
+
+
+def _to_float(value, default=0):
+    try:
+        return float(str(value or "").replace(",", "."))
+    except ValueError:
+        return default
+
+
+def _optional_int(value):
+    try:
+        return int(value) if str(value or "").strip() else None
+    except ValueError:
+        return None
+
+
+def _status_label(status):
+    return {
+        "new": "Yangi",
+        "confirmed": "Tasdiqlandi",
+        "materials_checked": "Xomashyo tekshirildi",
+        "in_production": "Ishlab chiqarishda",
+        "ready": "Tayyor",
+        "delivered": "Yetkazildi",
+        "cancelled": "Bekor qilindi",
+        "approved": "Tasdiqlangan",
+        "in_progress": "Jarayonda",
+        "done": "Tugagan",
+        "rejected": "Rad etilgan",
+    }.get(status, status)
 
 
 def register_web_routes(app):
     app.secret_key = os.getenv("SECRET_KEY", os.getenv("FLASK_SECRET_KEY", "dev-secret-change-me"))
+    app.jinja_env.globals["status_label"] = _status_label
+
+    @app.get("/")
+    def web_home():
+        return redirect(url_for("web_dashboard" if _current_user() else "web_login"))
 
     @app.get("/login")
     def web_login():
@@ -89,7 +132,7 @@ def register_web_routes(app):
             return redirect(url_for("web_login"))
         password_hash = user.get("password_hash")
         if not password_hash or not check_password_hash(password_hash, password):
-            flash("Parol noto'g'ri. Parol keyinroq bot orqali beriladi.", "error")
+            flash("Parol noto'g'ri.", "error")
             return redirect(url_for("web_login"))
         session.clear()
         session.update({"user_id": user["user_id"], "role": _role(user)})
@@ -109,89 +152,113 @@ def register_web_routes(app):
         db = get_db()
         ctx = _base_context(user)
         stats = db.get_order_stats()
-        inventory = db.get_inventory_by_warehouse(ctx["selected_warehouse"]) if ctx["selected_warehouse"] else []
-        if ctx["role"] == "admin":
-            orders = db.get_orders(limit=8)
+        report = db.get_crm_report()
+        materials = db.get_raw_materials(ctx["selected_warehouse"]) if ctx["selected_warehouse"] else []
+        critical = [m for m in materials if m.get("quantity", 0) <= m.get("min_quantity", 0)]
+        if ctx["role"] == "customer":
+            orders = db.get_orders(customer_id=user["user_id"], limit=8)
         elif ctx["role"] == "employee":
             orders = db.get_orders(employee_view=True, limit=8)
         else:
-            orders = db.get_orders(customer_id=user["user_id"], limit=8)
-        return render_template("dashboard.html", **ctx, stats=stats, orders=orders, inventory=inventory[:8])
+            orders = db.get_orders(limit=8)
+        return render_template("dashboard.html", **ctx, stats=stats, report=report, orders=orders, critical=critical[:8])
 
     @app.get("/products")
     def web_products():
-        user, response = _login_required(["admin", "employee"])
+        return redirect(url_for("web_finished_products"))
+
+    @app.get("/raw-materials")
+    def web_raw_materials():
+        user, response = _login_required(["admin", "manager", "warehouseman", "employee"])
         if response:
             return response
-        db = get_db()
         ctx = _base_context(user)
-        warehouse = ctx["selected_warehouse"]
-        branches = db.get_all_branches(warehouse) if warehouse else []
-        product_types = []
-        products = []
-        if warehouse:
-            for branch in branches + [{"name": "common"}]:
-                for ptype in db.get_all_product_types(warehouse, branch["name"]):
-                    product_types.append({**ptype, "branch": branch["name"]})
-                    products.extend(db.get_products_by_type(warehouse, branch["name"], ptype["name"]))
-        return render_template("products.html", **ctx, branches=branches, product_types=product_types, products=products)
+        materials = get_db().get_raw_materials(ctx["selected_warehouse"], request.args.get("q"))
+        movements = get_db().get_stock_movements(limit=60)
+        return render_template("raw_materials.html", **ctx, materials=materials, movements=movements, q=request.args.get("q", ""))
 
-    @app.post("/products/warehouse")
-    def web_add_warehouse():
-        user, response = _login_required(["admin"])
-        if response:
-            return response
-        name = request.form.get("name", "").strip()
-        if name and get_db().add_warehouse(name):
-            flash("Sklad qo'shildi.", "success")
-        else:
-            flash("Sklad nomi bo'sh yoki mavjud.", "error")
-        return redirect(url_for("web_products", warehouse=name))
-
-    @app.post("/products/branch")
-    def web_add_branch():
-        user, response = _login_required(["admin"])
-        if response:
-            return response
-        warehouse = request.form.get("warehouse")
-        name = request.form.get("name", "").strip()
-        if warehouse and name and get_db().add_branch(name, warehouse):
-            flash("Filial qo'shildi.", "success")
-        else:
-            flash("Filial nomi bo'sh yoki mavjud.", "error")
-        return redirect(url_for("web_products", warehouse=warehouse))
-
-    @app.post("/products/type")
-    def web_add_type():
-        user, response = _login_required(["admin"])
-        if response:
-            return response
-        warehouse = request.form.get("warehouse")
-        branch = request.form.get("branch") or "common"
-        name = request.form.get("name", "").strip()
-        if warehouse and name and get_db().add_product_type(name, warehouse=warehouse, branch=branch):
-            flash("Mahsulot turi qo'shildi.", "success")
-        else:
-            flash("Mahsulot turi bo'sh yoki mavjud.", "error")
-        return redirect(url_for("web_products", warehouse=warehouse))
-
-    @app.post("/products/item")
-    def web_add_product():
-        user, response = _login_required(["admin"])
+    @app.post("/raw-materials")
+    def web_add_raw_material():
+        user, response = _login_required(["admin", "manager", "warehouseman"])
         if response:
             return response
         db = get_db()
-        warehouse = request.form.get("warehouse")
-        branch = request.form.get("branch") or "common"
-        product_type = request.form.get("product_type")
-        name = request.form.get("name", "").strip()
-        code = request.form.get("code", "").strip()
-        unit = request.form.get("unit", "dona").strip() or "dona"
-        if warehouse and product_type and name and db.add_product(name, code, product_type, warehouse=warehouse, branch=branch, unit=unit):
-            flash("Mahsulot qo'shildi.", "success")
-        else:
-            flash("Mahsulot ma'lumotlari to'liq emas yoki mavjud.", "error")
-        return redirect(url_for("web_products", warehouse=warehouse))
+        warehouse = request.form.get("warehouse") or None
+        material_id = db.add_raw_material(
+            request.form.get("name", "").strip(),
+            request.form.get("category", "").strip(),
+            request.form.get("unit", "dona").strip(),
+            warehouse,
+            request.form.get("code", "").strip() or None,
+            _to_float(request.form.get("avg_cost")),
+            _to_float(request.form.get("min_quantity")),
+            _to_float(request.form.get("quantity")),
+            _display_name(user),
+        )
+        flash("Xomashyo qo'shildi." if material_id else "Xomashyo mavjud yoki ma'lumot to'liq emas.", "success" if material_id else "error")
+        return redirect(url_for("web_raw_materials", warehouse=warehouse))
+
+    @app.post("/raw-materials/<material_id>/stock")
+    def web_adjust_raw_material(material_id):
+        user, response = _login_required(["admin", "manager", "warehouseman"])
+        if response:
+            return response
+        warehouse = request.form.get("warehouse") or None
+        movement_type = request.form.get("type") or "in"
+        new_qty = get_db().adjust_raw_material_stock(
+            material_id,
+            warehouse,
+            movement_type,
+            _to_float(request.form.get("quantity")),
+            _display_name(user),
+            request.form.get("note"),
+        )
+        flash("Sklad yangilandi." if new_qty is not None else "Miqdor noto'g'ri yoki qoldiq yetarli emas.", "success" if new_qty is not None else "error")
+        return redirect(url_for("web_raw_materials", warehouse=warehouse))
+
+    @app.get("/finished-products")
+    def web_finished_products():
+        user, response = _login_required(["admin", "manager", "warehouseman", "employee"])
+        if response:
+            return response
+        ctx = _base_context(user)
+        products = get_db().get_finished_products(search=request.args.get("q"))
+        materials = get_db().get_raw_materials(ctx["selected_warehouse"]) if ctx["selected_warehouse"] else []
+        return render_template("finished_products.html", **ctx, products=products, materials=materials, q=request.args.get("q", ""))
+
+    @app.post("/finished-products")
+    def web_add_finished_product():
+        user, response = _login_required(["admin", "manager"])
+        if response:
+            return response
+        product_id = get_db().add_finished_product(
+            request.form.get("name", "").strip(),
+            request.form.get("article", "").strip() or None,
+            request.form.get("color", "").strip() or None,
+            request.form.get("size", "").strip() or None,
+            _to_float(request.form.get("sale_price")),
+            True,
+        )
+        flash("Tayyor mahsulot qo'shildi." if product_id else "Mahsulot mavjud yoki ma'lumot to'liq emas.", "success" if product_id else "error")
+        return redirect(url_for("web_finished_products"))
+
+    @app.post("/finished-products/<product_id>/bom")
+    def web_add_bom_item(product_id):
+        user, response = _login_required(["admin", "manager"])
+        if response:
+            return response
+        ok = get_db().set_product_bom_item(product_id, request.form.get("material_id"), _to_float(request.form.get("quantity")))
+        flash("Retsept yangilandi." if ok else "Retsept uchun mahsulot yoki xomashyo topilmadi.", "success" if ok else "error")
+        return redirect(url_for("web_finished_products"))
+
+    @app.post("/bom/<item_id>/delete")
+    def web_delete_bom_item(item_id):
+        user, response = _login_required(["admin", "manager"])
+        if response:
+            return response
+        get_db().delete_product_bom_item(item_id)
+        flash("Retsept qatori o'chirildi.", "success")
+        return redirect(url_for("web_finished_products"))
 
     @app.get("/orders")
     def web_orders():
@@ -200,75 +267,213 @@ def register_web_routes(app):
             return response
         db = get_db()
         ctx = _base_context(user)
-        if ctx["role"] == "admin":
-            orders = db.get_orders()
+        if ctx["role"] == "customer":
+            orders = db.get_orders(customer_id=user["user_id"])
         elif ctx["role"] == "employee":
             orders = db.get_orders(employee_view=True)
         else:
-            orders = db.get_orders(customer_id=user["user_id"])
-        return render_template("orders.html", **ctx, orders=orders)
+            orders = db.get_orders(status=request.args.get("status") or None)
+        products = db.get_finished_products(active=True)
+        customers = db.get_customers(limit=100)
+        return render_template("orders.html", **ctx, orders=orders, products=products, customers=customers, selected_status=request.args.get("status", ""))
 
     @app.post("/orders")
     def web_create_order():
-        user, response = _login_required(["customer", "admin"])
-        if response:
-            return response
-        title = request.form.get("title", "").strip()
-        description = request.form.get("description", "").strip()
-        warehouse = request.form.get("warehouse") or None
-        branch = request.form.get("branch") or None
-        if not title or not description:
-            flash("Buyurtma nomi va izohini yozing.", "error")
-        else:
-            get_db().create_order(user["user_id"], _display_name(user), title, description, warehouse, branch)
-            flash("Buyurtma yuborildi. Admin tasdiqlasa xodimlarga ko'rinadi.", "success")
-        return redirect(url_for("web_orders"))
-
-    @app.post("/orders/<order_id>/status")
-    def web_update_order(order_id):
-        user, response = _login_required(["admin", "employee"])
-        if response:
-            return response
-        status = request.form.get("status")
-        allowed = {"admin": {"approved", "rejected", "done"}, "employee": {"in_progress", "done"}}
-        role = _role(user)
-        if status not in allowed[role]:
-            flash("Bu statusni qo'yish huquqi yo'q.", "error")
-            return redirect(url_for("web_orders"))
-        note = request.form.get("note") or f"Status: {status}"
-        assigned_to = user["user_id"] if role == "employee" and status == "in_progress" else None
-        get_db().update_order_status(order_id, status, _display_name(user), note=note, assigned_to=assigned_to)
-        flash("Buyurtma statusi yangilandi.", "success")
-        return redirect(url_for("web_orders"))
-
-    @app.get("/inventory")
-    def web_inventory():
-        user, response = _login_required(["admin", "employee"])
+        user, response = _login_required(["customer", "admin", "manager"])
         if response:
             return response
         db = get_db()
         ctx = _base_context(user)
-        inventory = db.get_inventory_by_warehouse(ctx["selected_warehouse"]) if ctx["selected_warehouse"] else []
-        return render_template("inventory.html", **ctx, inventory=inventory)
+        product = db.get_finished_product(request.form.get("product_id"))
+        quantity = _to_float(request.form.get("quantity"), 1)
+        if not product or quantity <= 0:
+            flash("Tayyor mahsulot va miqdorni to'g'ri tanlang.", "error")
+            return redirect(url_for("web_orders"))
+        unit_price = _to_float(request.form.get("unit_price"), float(product.get("sale_price") or 0))
+        item = {
+            "product_id": str(product["_id"]),
+            "product_name": product.get("name"),
+            "article": product.get("article"),
+            "color": product.get("color"),
+            "size": product.get("size"),
+            "quantity": quantity,
+            "unit_price": unit_price,
+            "total": quantity * unit_price,
+        }
+        if ctx["role"] == "customer":
+            customer_id = user["user_id"]
+            customer_name = _display_name(user)
+            phone = user.get("phone")
+            source = "telegram/web"
+        else:
+            customer_name = request.form.get("customer_name", "").strip() or "Noma'lum mijoz"
+            phone = request.form.get("customer_phone", "").strip() or None
+            customer_id = phone or customer_name
+            source = request.form.get("source") or "admin"
+            db.upsert_customer(customer_name, phone=phone, telegram=request.form.get("telegram"), instagram=request.form.get("instagram"), source=source)
+        title = f"{item['product_name']} x {quantity:g}"
+        order_id = db.create_order(
+            customer_id,
+            customer_name,
+            title,
+            request.form.get("description", "").strip(),
+            request.form.get("warehouse") or ctx["selected_warehouse"],
+            request.form.get("branch") or None,
+            [item],
+            source,
+            phone,
+        )
+        flash(f"Buyurtma yaratildi: {order_id}", "success")
+        return redirect(url_for("web_orders"))
+
+    @app.post("/orders/<order_id>/status")
+    def web_update_order(order_id):
+        user, response = _login_required(["admin", "manager", "warehouseman", "employee"])
+        if response:
+            return response
+        status = request.form.get("status")
+        role = _role(user)
+        allowed = {
+            "admin": set(ORDER_STATUSES),
+            "manager": {"confirmed", "materials_checked", "ready", "delivered", "cancelled"},
+            "warehouseman": {"materials_checked", "in_production"},
+            "employee": {"in_production", "ready"},
+        }
+        if status not in allowed.get(role, set()):
+            flash("Bu statusni qo'yish huquqi yo'q.", "error")
+            return redirect(url_for("web_orders"))
+        ok = get_db().update_order_status(order_id, status, _display_name(user), request.form.get("note"))
+        flash("Buyurtma statusi yangilandi." if ok else "Status yangilanmadi. Xomashyo yetarli bo'lmasligi mumkin.", "success" if ok else "error")
+        return redirect(url_for("web_orders"))
+
+    @app.post("/orders/<order_id>/payments")
+    def web_add_payment(order_id):
+        user, response = _login_required(["admin", "manager"])
+        if response:
+            return response
+        method = request.form.get("method")
+        if method not in PAYMENT_METHODS:
+            method = "naqd"
+        get_db().add_payment(order_id, _to_float(request.form.get("amount")), method, request.form.get("note"), _display_name(user))
+        flash("To'lov qayd qilindi.", "success")
+        return redirect(url_for("web_orders"))
+
+    @app.get("/inventory")
+    def web_inventory():
+        return redirect(url_for("web_raw_materials", warehouse=request.args.get("warehouse")))
+
+    @app.get("/customers")
+    def web_customers():
+        user, response = _login_required(["admin", "manager"])
+        if response:
+            return response
+        customers = get_db().get_customers(request.args.get("q"))
+        return render_template("customers.html", **_base_context(user), customers=customers, q=request.args.get("q", ""))
+
+    @app.post("/customers")
+    def web_add_customer():
+        user, response = _login_required(["admin", "manager"])
+        if response:
+            return response
+        get_db().upsert_customer(
+            request.form.get("name", "").strip(),
+            request.form.get("phone", "").strip() or None,
+            _optional_int(request.form.get("user_id")),
+            request.form.get("telegram"),
+            request.form.get("instagram"),
+            request.form.get("facebook"),
+            request.form.get("tiktok"),
+            request.form.get("whatsapp"),
+            request.form.get("source"),
+            request.form.get("address"),
+        )
+        flash("Xaridor saqlandi.", "success")
+        return redirect(url_for("web_customers"))
+
+    @app.get("/employees")
+    def web_employees():
+        user, response = _login_required(["admin", "manager"])
+        if response:
+            return response
+        date_text = request.args.get("date") or datetime.utcnow().strftime("%Y-%m-%d")
+        employees = get_db().get_employees()
+        attendance = {row["employee_id"]: row for row in get_db().get_attendance(date_text, date_text)}
+        for employee in employees:
+            employee["attendance"] = attendance.get(str(employee["_id"]))
+        return render_template("employees.html", **_base_context(user), employees=employees, attendance=attendance, attendance_statuses=ATTENDANCE_STATUSES, selected_date=date_text)
+
+    @app.post("/employees")
+    def web_add_employee():
+        user, response = _login_required(["admin", "manager"])
+        if response:
+            return response
+        get_db().upsert_employee(
+            request.form.get("first_name", "").strip(),
+            request.form.get("last_name", "").strip() or None,
+            request.form.get("phone", "").strip() or None,
+            _optional_int(request.form.get("user_id")),
+            request.form.get("position"),
+            request.form.get("salary_type"),
+            request.form.get("can_mark_attendance") == "on",
+        )
+        flash("Xodim saqlandi.", "success")
+        return redirect(url_for("web_employees"))
+
+    @app.post("/employees/<employee_id>/attendance")
+    def web_mark_attendance(employee_id):
+        user, response = _login_required(["admin", "manager", "employee"])
+        if response:
+            return response
+        status = request.form.get("status")
+        if status not in ATTENDANCE_STATUSES:
+            flash("Davomad holati noto'g'ri.", "error")
+            return redirect(url_for("web_employees"))
+        get_db().mark_attendance(employee_id, request.form.get("date"), status, user.get("user_id"), request.form.get("note"))
+        flash("Davomad belgilandi.", "success")
+        return redirect(url_for("web_employees", date=request.form.get("date")))
+
+    @app.get("/expenses")
+    def web_expenses():
+        user, response = _login_required(["admin", "manager"])
+        if response:
+            return response
+        date_from = request.args.get("from")
+        date_to = request.args.get("to")
+        expenses = get_db().get_expenses(date_from, date_to)
+        return render_template("expenses.html", **_base_context(user), expenses=expenses, date_from=date_from or "", date_to=date_to or "")
+
+    @app.post("/expenses")
+    def web_add_expense():
+        user, response = _login_required(["admin", "manager"])
+        if response:
+            return response
+        get_db().add_expense(
+            request.form.get("category", "").strip(),
+            _to_float(request.form.get("amount")),
+            request.form.get("date") or datetime.utcnow().strftime("%Y-%m-%d"),
+            request.form.get("description"),
+            _display_name(user),
+        )
+        flash("Xarajat saqlandi.", "success")
+        return redirect(url_for("web_expenses"))
 
     @app.get("/reports")
     def web_reports():
-        user, response = _login_required(["admin"])
+        user, response = _login_required(["admin", "manager"])
         if response:
             return response
-        ctx = _base_context(user)
-        stats = get_db().get_order_stats()
-        return render_template("reports.html", **ctx, stats=stats)
+        date_from = request.args.get("from")
+        date_to = request.args.get("to")
+        report = get_db().get_crm_report(date_from, date_to)
+        return render_template("reports.html", **_base_context(user), report=report, date_from=date_from or "", date_to=date_to or "")
 
     @app.get("/management")
     def web_management():
         user, response = _login_required(["admin"])
         if response:
             return response
-        db = get_db()
-        ctx = _base_context(user)
-        users = db.get_all_users()
-        return render_template("management.html", **ctx, users=users)
+        users = get_db().get_all_users()
+        return render_template("management.html", **_base_context(user), users=users, crm_roles=CRM_ROLES)
 
     @app.post("/management/users/<int:user_id>")
     def web_update_user(user_id):
@@ -276,6 +481,8 @@ def register_web_routes(app):
         if response:
             return response
         role = request.form.get("role")
+        if role not in CRM_ROLES:
+            role = "customer"
         password = request.form.get("password", "").strip()
         approved = request.form.get("approved") == "on"
         password_hash = generate_password_hash(password) if password else None

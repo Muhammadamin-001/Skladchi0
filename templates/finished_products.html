@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+{% block content %}
+<header class="top">
+  <div>
+    <h1>Tayyor mahsulotlar</h1>
+    <p>Assortiment va har bir mahsulot uchun xomashyo retsepti.</p>
+  </div>
+</header>
+
+<section class="panel filters">
+  <form class="inline">
+    <input name="q" value="{{ q }}" placeholder="Mahsulot, artikul, rang yoki o'lcham">
+    <button class="ghost">Qidirish</button>
+  </form>
+</section>
+
+{% if role in ['admin','manager'] %}
+<form class="panel stack" method="post" action="{{ url_for('web_add_finished_product') }}">
+  <h2>Yangi tayyor mahsulot</h2>
+  <div class="grid five">
+    <input name="name" placeholder="Nomi" required>
+    <input name="article" placeholder="Artikul">
+    <input name="color" placeholder="Rang">
+    <input name="size" placeholder="O'lcham">
+    <input name="sale_price" type="number" step="100" placeholder="Sotuv narxi">
+  </div>
+  <button>Qo'shish</button>
+</form>
+{% endif %}
+
+<div class="grid two">
+  {% for product in products %}
+  <section class="panel product-panel">
+    <div class="section-head">
+      <div>
+        <h2>{{ product.name }}</h2>
+        <p>{{ product.article or 'Artikulsiz' }} / {{ product.color or '-' }} / {{ product.size or '-' }}</p>
+      </div>
+      <span class="badge ready">{{ "%.0f"|format(product.sale_price or 0) }}</span>
+    </div>
+    <div class="metric-row">
+      <span>Tannarx: <b>{{ "%.0f"|format(product.cost or 0) }}</b></span>
+      <span>Foyda: <b>{{ "%.0f"|format((product.sale_price or 0) - (product.cost or 0)) }}</b></span>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Xomashyo</th><th>Miqdor</th><th></th></tr></thead>
+        <tbody>
+          {% for item in product.bom %}
+          <tr>
+            <td>{{ item.material_name }}</td>
+            <td>{{ item.quantity:g }} {{ item.unit }}</td>
+            <td>
+              {% if role in ['admin','manager'] %}
+              <form method="post" action="{{ url_for('web_delete_bom_item', item_id=item._id) }}"><button class="ghost">O'chirish</button></form>
+              {% endif %}
+            </td>
+          </tr>
+          {% else %}
+          <tr><td colspan="3">Retsept kiritilmagan.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% if role in ['admin','manager'] %}
+    <form class="inline compact" method="post" action="{{ url_for('web_add_bom_item', product_id=product._id) }}">
+      <select name="material_id">
+        {% for material in materials %}
+        <option value="{{ material._id }}">{{ material.name }} ({{ material.unit }})</option>
+        {% endfor %}
+      </select>
+      <input name="quantity" type="number" min="0.001" step="0.001" placeholder="1 dona uchun">
+      <button>Retseptga qo'shish</button>
+    </form>
+    {% endif %}
+  </section>
+  {% else %}
+  <section class="panel"><p>Tayyor mahsulot yo'q.</p></section>
+  {% endfor %}
+</div>
+{% endblock %}

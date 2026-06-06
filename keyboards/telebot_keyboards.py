@@ -331,11 +331,8 @@ def user_main_menu(warehouse):
 
 def user_request_menu():
     """So'rov menyu"""
-    markup = telebot.types.InlineKeyboardMarkup()
-    markup.add(telebot.types.InlineKeyboardButton(
-        MESSAGES["button_send_request"],
-        callback_data="send_request"
-    ))
+    markup = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
+    markup.add(telebot.types.KeyboardButton("Telefon raqamni yuborish", request_contact=True))
     return markup
 
 def user_warehouse_menu():

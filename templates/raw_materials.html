@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+{% block content %}
+<header class="top">
+  <div>
+    <h1>Xomashyo skladi</h1>
+    <p>Mato, ip, tugma, qadoq va boshqa materiallar qoldig'i.</p>
+  </div>
+</header>
+
+<section class="panel filters">
+  <form class="inline">
+    <select name="warehouse">
+      {% for wh in warehouses %}<option {{ 'selected' if wh.name == selected_warehouse }}>{{ wh.name }}</option>{% endfor %}
+    </select>
+    <input name="q" value="{{ q }}" placeholder="Qidiruv">
+    <button class="ghost">Filter</button>
+  </form>
+</section>
+
+{% if role in ['admin','manager','warehouseman'] %}
+<form class="panel stack" method="post" action="{{ url_for('web_add_raw_material') }}">
+  <h2>Yangi xomashyo</h2>
+  <input type="hidden" name="warehouse" value="{{ selected_warehouse }}">
+  <div class="grid four">
+    <input name="name" placeholder="Nomi" required>
+    <input name="category" placeholder="Kategoriya: Mato, Ip..." required>
+    <input name="unit" placeholder="Birlik: metr, dona, kg" value="dona">
+    <input name="code" placeholder="Kod">
+  </div>
+  <div class="grid three">
+    <input name="quantity" type="number" step="0.01" placeholder="Boshlang'ich qoldiq">
+    <input name="avg_cost" type="number" step="0.01" placeholder="Sotib olish narxi">
+    <input name="min_quantity" type="number" step="0.01" placeholder="Minimal qoldiq">
+  </div>
+  <button>Qo'shish</button>
+</form>
+{% endif %}
+
+<section class="panel">
+  <h2>Qoldiqlar</h2>
+  <div class="table-wrap responsive-table">
+    <table>
+      <thead><tr><th>Xomashyo</th><th>Kategoriya</th><th>Qoldiq</th><th>Narx</th><th>Amal</th></tr></thead>
+      <tbody>
+        {% for item in materials %}
+        <tr>
+          <td data-label="Xomashyo"><b>{{ item.name }}</b><small>{{ item.code or '' }}</small></td>
+          <td data-label="Kategoriya">{{ item.category }}</td>
+          <td data-label="Qoldiq"><b>{{ item.quantity:g }}</b> {{ item.unit }}<small>Min: {{ item.min_quantity:g }}</small></td>
+          <td data-label="Narx">{{ "%.0f"|format(item.avg_cost or 0) }}</td>
+          <td data-label="Amal">
+            {% if role in ['admin','manager','warehouseman'] %}
+            <form method="post" action="{{ url_for('web_adjust_raw_material', material_id=item._id) }}" class="inline compact">
+              <input type="hidden" name="warehouse" value="{{ item.warehouse }}">
+              <select name="type"><option value="in">Kirim</option><option value="out">Chiqim</option><option value="adjust">Tuzatish</option></select>
+              <input name="quantity" type="number" step="0.01" placeholder="Miqdor">
+              <input name="note" placeholder="Izoh">
+              <button>Saqlash</button>
+            </form>
+            {% endif %}
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="5">Xomashyo yo'q.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="panel">
+  <h2>Kirim-chiqim jurnali</h2>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Sana</th><th>Xomashyo</th><th>Tur</th><th>Miqdor</th><th>Izoh</th><th>Kim</th></tr></thead>
+      <tbody>
+        {% for row in movements %}
+        <tr><td>{{ row.created_at.strftime('%Y-%m-%d %H:%M') if row.created_at else '-' }}</td><td>{{ row.material_name }}</td><td>{{ row.type }}</td><td>{{ row.quantity:g }}</td><td>{{ row.note or '-' }}</td><td>{{ row.actor_name or '-' }}</td></tr>
+        {% else %}
+        <tr><td colspan="6">Harakatlar yo'q.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endblock %}

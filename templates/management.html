@@ -2,13 +2,13 @@
 {% block content %}
 <header class="top">
   <div>
-    <h1>Boshqarish</h1>
+    <h1>Sozlamalar</h1>
     <p>Foydalanuvchi roli, web paroli va tasdiqlash.</p>
   </div>
 </header>
 
 <section class="panel">
-  <div class="table-wrap">
+  <div class="table-wrap responsive-table">
     <table>
       <thead>
         <tr><th>Foydalanuvchi</th><th>User ID</th><th>Role</th><th>Tasdiq</th><th>Yangi parol</th><th></th></tr>
@@ -17,17 +17,17 @@
         {% for u in users %}
         <tr>
           <form method="post" action="{{ url_for('web_update_user', user_id=u.user_id) }}">
-            <td>{{ u.username or u.first_name }}</td>
-            <td>{{ u.user_id }}</td>
-            <td>
+            <td data-label="Foydalanuvchi">{{ u.username or u.first_name }}<small>{{ u.phone or '' }}</small></td>
+            <td data-label="User ID">{{ u.user_id }}</td>
+            <td data-label="Role">
               <select name="role">
-                <option value="customer" {{ 'selected' if (u.role or 'customer') == 'customer' }}>Mijoz</option>
-                <option value="employee" {{ 'selected' if u.role == 'employee' }}>Xodim</option>
-                <option value="admin" {{ 'selected' if u.role == 'admin' }}>Admin</option>
+                {% for item in crm_roles|sort %}
+                <option value="{{ item }}" {{ 'selected' if (u.role or 'customer') == item }}>{{ item }}</option>
+                {% endfor %}
               </select>
             </td>
-            <td><input type="checkbox" name="approved" {{ 'checked' if u.approved }}></td>
-            <td><input name="password" placeholder="O'zgartirish uchun yozing"></td>
+            <td data-label="Tasdiq"><input type="checkbox" name="approved" {{ 'checked' if u.approved }}></td>
+            <td data-label="Parol"><input name="password" placeholder="O'zgartirish uchun yozing"></td>
             <td><button>Saqlash</button></td>
           </form>
         </tr>

@@ -271,7 +271,11 @@ def handle_start(message):
     else:
         if not user:
             db.add_user(user_id, username, first_name, approved=False)
-        bot.send_message(user_id, MESSAGES["start_user_unapproved"], reply_markup=user_request_menu())
+        bot.send_message(
+            user_id,
+            "Tizimdan foydalanish uchun admin tasdiqlashi kerak.\n\nIltimos, telefon raqamingizni kontakt sifatida yuboring.",
+            reply_markup=user_request_menu(),
+        )
 
 # ==================== WAREHOUSE HANDLERS ====================
 
@@ -2962,6 +2966,44 @@ def handle_list_product(call):
 
 # ==================== REQUEST HANDLERS ====================
 
+@bot.message_handler(content_types=["contact"])
+def handle_contact_request(message):
+    """Ro'yxatdan o'tish uchun telefon kontaktini qabul qilish."""
+    user_id = message.from_user.id
+    contact = message.contact
+    if contact and contact.user_id and contact.user_id != user_id:
+        bot.send_message(message.chat.id, "Iltimos, o'zingizning telefon raqamingizni yuboring.")
+        return
+
+    username = message.from_user.username or "NoUsername"
+    first_name = message.from_user.first_name or (contact.first_name if contact else "Foydalanuvchi")
+    last_name = message.from_user.last_name or (contact.last_name if contact else None)
+    phone = contact.phone_number if contact else None
+    display_name = _display_actor_name(username, first_name)
+
+    db = get_db()
+    if not db.get_user(user_id):
+        db.add_user(user_id, username, first_name, approved=False)
+    db.update_user_contact(user_id, phone=phone, first_name=first_name, last_name=last_name)
+    db.add_request(user_id, display_name)
+
+    bot.send_message(
+        message.chat.id,
+        "So'rov yuborildi. Admin tasdiqlagandan keyin login ma'lumotlari bot orqali keladi.",
+        reply_markup=telebot.types.ReplyKeyboardRemove(),
+    )
+
+    markup = telebot.types.InlineKeyboardMarkup()
+    markup.add(
+        telebot.types.InlineKeyboardButton("Tasdiqlash", callback_data=f"approve_user:{user_id}"),
+        telebot.types.InlineKeyboardButton("Rad qilish", callback_data=f"reject_user:{user_id}"),
+    )
+    bot.send_message(
+        ADMIN_ID,
+        f"Yangi so'rov:\n\nFoydalanuvchi: {display_name}\nUser ID: {user_id}\nTelefon: {phone or '-'}",
+        reply_markup=markup,
+    )
+
 @bot.callback_query_handler(func=lambda call: call.data == "send_request")
 def handle_send_request(call):
     """So'rov yuborish"""
@@ -3028,6 +3070,23 @@ def handle_approve_user_role(call):
     db = get_db()
     db.approve_user(user_id, role=role, password_hash=generate_password_hash(password))
     db.delete_request(user_id)
+    approved_user = db.get_user(user_id)
+    if approved_user and role == "customer":
+        db.upsert_customer(
+            _display_actor_name(approved_user.get("username"), approved_user.get("first_name")),
+            phone=approved_user.get("phone"),
+            user_id=user_id,
+            telegram=approved_user.get("username"),
+            source="telegram",
+        )
+    if approved_user and role == "employee":
+        db.upsert_employee(
+            approved_user.get("first_name") or "Xodim",
+            approved_user.get("last_name"),
+            phone=approved_user.get("phone"),
+            user_id=user_id,
+            position="Xodim",
+        )
     
     role_label = "xodim" if role == "employee" else "mijoz"
     bot.answer_callback_query(call.id, "✅ Tasdiqlandi")

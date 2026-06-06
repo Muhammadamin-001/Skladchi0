@@ -1,36 +1,50 @@
-<div class="table-wrap">
+<div class="table-wrap responsive-table">
   <table>
     <thead>
-      <tr><th>Nomi</th><th>Mijoz</th><th>Status</th><th>Sklad/filial</th><th>Amal</th></tr>
+      <tr><th>Buyurtma</th><th>Mijoz</th><th>Status</th><th>Summa</th><th>Material</th><th>Amal</th></tr>
     </thead>
     <tbody>
       {% for order in orders %}
       <tr>
-        <td><b>{{ order.title }}</b><small>{{ order.description }}</small></td>
-        <td>{{ order.customer_name }}</td>
-        <td><span class="badge {{ order.status }}">{{ order.status }}</span></td>
-        <td>{{ order.warehouse or '-' }} / {{ order.branch or '-' }}</td>
-        <td>
-          {% if role == 'admin' and order.status == 'new' %}
+        <td data-label="Buyurtma">
+          <b>{{ order.title }}</b>
+          <small>{{ order.description or '' }}</small>
+          {% for item in order.items or [] %}
+          <small>{{ item.product_name }}: {{ item.quantity:g }} dona</small>
+          {% endfor %}
+        </td>
+        <td data-label="Mijoz">{{ order.customer_name }}<small>{{ order.customer_phone or order.source or '' }}</small></td>
+        <td data-label="Status"><span class="badge {{ order.status }}">{{ status_label(order.status) }}</span></td>
+        <td data-label="Summa"><b>{{ "%.0f"|format(order.total_amount or 0) }}</b></td>
+        <td data-label="Material">
+          {% if order.items %}
+            {% if order.materials_ok %}<span class="badge ready">Yetarli</span>{% else %}<span class="badge cancelled">Yetarli emas</span>{% endif %}
+          {% else %}
+            <span class="muted">-</span>
+          {% endif %}
+        </td>
+        <td data-label="Amal">
+          {% if role in ['admin','manager','warehouseman','employee'] %}
           <form method="post" action="{{ url_for('web_update_order', order_id=order._id) }}" class="inline">
-            <button name="status" value="approved">Tasdiqlash</button>
-            <button class="ghost" name="status" value="rejected">Rad</button>
+            {% if role in ['admin','manager'] and order.status == 'new' %}<button name="status" value="confirmed">Tasdiqlash</button>{% endif %}
+            {% if role in ['admin','manager','warehouseman'] and order.status in ['confirmed','new'] %}<button name="status" value="materials_checked">Tekshirish</button>{% endif %}
+            {% if role in ['admin','warehouseman','employee'] and order.status in ['materials_checked','confirmed'] %}<button name="status" value="in_production">Ishlab chiq.</button>{% endif %}
+            {% if role in ['admin','manager','employee'] and order.status == 'in_production' %}<button name="status" value="ready">Tayyor</button>{% endif %}
+            {% if role in ['admin','manager'] and order.status == 'ready' %}<button name="status" value="delivered">Yetkazildi</button>{% endif %}
+            {% if role in ['admin','manager'] and order.status not in ['delivered','cancelled'] %}<button class="ghost" name="status" value="cancelled">Bekor</button>{% endif %}
+          </form>
+          {% if role in ['admin','manager'] %}
+          <form method="post" action="{{ url_for('web_add_payment', order_id=order._id) }}" class="inline compact">
+            <input name="amount" placeholder="To'lov">
+            <select name="method">{% for method in payment_methods %}<option>{{ method }}</option>{% endfor %}</select>
+            <button class="ghost">Qayd</button>
           </form>
           {% endif %}
-          {% if role == 'employee' and order.status == 'approved' %}
-          <form method="post" action="{{ url_for('web_update_order', order_id=order._id) }}">
-            <button name="status" value="in_progress">Jarayonda</button>
-          </form>
-          {% endif %}
-          {% if role in ['admin','employee'] and order.status in ['approved','in_progress'] %}
-          <form method="post" action="{{ url_for('web_update_order', order_id=order._id) }}">
-            <button name="status" value="done">Tugatdim</button>
-          </form>
           {% endif %}
         </td>
       </tr>
       {% else %}
-      <tr><td colspan="5">Buyurtma yo'q.</td></tr>
+      <tr><td colspan="6">Buyurtma yo'q.</td></tr>
       {% endfor %}
     </tbody>
   </table>
