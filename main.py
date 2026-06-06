@@ -5,7 +5,7 @@ import time
 import secrets
 from flask import Flask, request, redirect
 from werkzeug.security import generate_password_hash
-from config.settings import BOT_TOKEN, ADMIN_ID, MESSAGES
+from config.settings import BOT_TOKEN, ADMIN_ID, MESSAGES, WEB_APP_URL
 from database.mongodb import init_db, get_db
 from keyboards.telebot_keyboards import (
     admin_main_menu,
@@ -51,8 +51,7 @@ try:
     init_db()
     logger.info("✅ MongoDB baza tayyor")
 except Exception as e:
-    logger.exception("❌ MongoDB ishga tushmadi. Web va bot noto'g'ri holatda ishlamasligi uchun servis to'xtatiladi.")
-    raise
+    logger.exception("❌ MongoDB hozircha ishga tushmadi. Web servis ishga tushadi va keyingi so'rovlarda qayta ulanib ko'radi.")
 
 # ==================== USER STATE STORAGE ====================
 user_states = {}
@@ -3157,7 +3156,9 @@ def handle_user_main(call):
 
 # ==================== WEBHOOK ====================
 
-@app.route('/' + BOT_TOKEN, methods=['POST'])
+WEBHOOK_PATH = f"/{BOT_TOKEN}" if BOT_TOKEN else "/telegram-webhook-disabled"
+
+@app.route(WEBHOOK_PATH, methods=['POST'])
 def webhook():
     """Webhook endpoint"""
     try:
@@ -3168,6 +3169,40 @@ def webhook():
     except Exception as e:
         logger.error(f"❌ Webhook error: {e}")
     return "ok", 200
+
+def configure_telegram_webhook():
+    """Render ishga tushganda Telegram webhookni avtomatik sozlaydi."""
+    if not BOT_TOKEN:
+        logger.warning("⚠️ BOT_TOKEN berilmagan, Telegram webhook sozlanmadi")
+        return
+    if not WEB_APP_URL:
+        logger.warning("⚠️ WEB_APP_URL berilmagan, Telegram webhook sozlanmadi")
+        return
+    if os.getenv("AUTO_SET_WEBHOOK", "true").lower() in {"0", "false", "no"}:
+        logger.info("ℹ️ AUTO_SET_WEBHOOK o'chirilgan")
+        return
+
+    webhook_url = f"{WEB_APP_URL.rstrip('/')}{WEBHOOK_PATH}"
+    try:
+        bot.remove_webhook()
+        if bot.set_webhook(webhook_url):
+            logger.info("✅ Telegram webhook sozlandi: %s", webhook_url)
+        else:
+            logger.warning("⚠️ Telegram webhook sozlashdan False qaytdi: %s", webhook_url)
+    except Exception as exc:
+        logger.exception("❌ Telegram webhook sozlash xatosi: %s", exc)
+
+
+@app.get('/healthz')
+def healthz():
+    """Render va diagnostika uchun oddiy health endpoint."""
+    try:
+        get_db()
+        db_status = "ok"
+    except Exception as exc:
+        db_status = f"error: {exc}"
+    return {"status": "ok", "db": db_status, "webhook_path": WEBHOOK_PATH}, 200
+
 
 # Line 2660 dan oldin qo'shish:
 # ==================== MODULE REGISTRATION ====================
@@ -3185,10 +3220,11 @@ def index():
     return redirect("/dashboard")
 
 register_web_routes(app)
+configure_telegram_webhook()
 
 # ==================== MAIN ====================
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
-    logger.info(f"🤖 Bot ishga tushdi! Webhook path: /{BOT_TOKEN}")
+    logger.info(f"🤖 Bot ishga tushdi! Webhook path: {WEBHOOK_PATH}")
     app.run(host="0.0.0.0", port=port, debug=False)

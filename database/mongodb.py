@@ -12,12 +12,17 @@ logger = logging.getLogger(__name__)
 
 class DatabaseNotInitializedError(RuntimeError):
     """MongoDB manager ishga tushmaganida qaytariladigan aniq xato."""
+    
+_db_init_error = None
+
 
 class MongoDBManager:
     """MongoDB bilan ishlash uchun asosiy klass"""
     
     def __init__(self):
         try:
+            if not MONGO_URI:
+                raise ValueError("MONGO_URI environment variable berilmagan")
             self.client = MongoClient(MONGO_URI, serverSelectionTimeoutMS=5000)
             self.client.admin.command("ping")
             self.db = self.client[DB_NAME]
@@ -128,7 +133,7 @@ class MongoDBManager:
             unique=True,
             name="uniq_finished_products_article_non_empty",
             partialFilterExpression={"article": {"$type": "string", "$gt": ""}},
-        )    
+        )
 
     def _migrate_legacy_products_to_raw_materials(self):
         """Eski products/inventory yozuvlarini yangi xomashyo modeliga ko'chiradi."""
@@ -1174,13 +1179,25 @@ class MongoDBManager:
 _db_manager = None
 
 def init_db():
-    global _db_manager
-    _db_manager = MongoDBManager()
-    return _db_manager
+    global _db_init_error, _db_manager
+    try:
+        _db_manager = MongoDBManager()
+        _db_init_error = None
+        return _db_manager
+    except Exception as exc:
+        _db_manager = None
+        _db_init_error = exc
+        raise
 
 def get_db():
-    if _db_manager is None:
-       raise DatabaseNotInitializedError(
-           "MongoDB ishga tushmagan. Render envda MONGO_URI to'g'ri berilganini va MongoDB ulanishini tekshiring."
-       )
-    return _db_manager
+    global _db_manager
+    if _db_manager is not None:
+        return _db_manager
+    try:
+        return init_db()
+    except Exception as exc:
+        detail = str(exc) or str(_db_init_error) or "noma'lum xato"
+        raise DatabaseNotInitializedError(
+            "MongoDB ishga tushmagan. Render envda MONGO_URI to'g'ri berilganini, "
+            f"Atlas IP access sozlamasini va index xatolarini tekshiring. Xato: {detail}"
+        ) from exc
